@@ -1,8 +1,7 @@
 <p align="center">
   <img src="docs/images/icon.png" width="128" alt="ScreenMate 아이콘">
 </p>
-
-<h3 align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/headings/title-dark.png"><img src="docs/images/headings/title-light.png" alt="스크린메이트(ScreenMate)" width="350" height="52"></picture></h3>
+<h1 align="center">ScreenMate</h1>
 
 <p align="center">
   <b>바탕화면 위에서 살아 움직이는 MMD 데스크톱 메이트</b><br>
