@@ -46,6 +46,7 @@ import {
   renameModel,
   titleOf,
 } from "./library";
+import "../platformFont";
 import "./settings.css";
 import { makeMissingThumbnails, needsThumbnail } from "./thumbnails";
 

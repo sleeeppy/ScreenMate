@@ -21,6 +21,7 @@ import type { LoadedCharacter } from "./mmd/loadModel";
 import { readOverrides, type ModelProfile } from "./mmd/profile";
 import { MOTIONS } from "./motion/clips/index.ts";
 import { Stage } from "./stage/engine";
+import "./platformFont";
 import "./styles.css";
 
 const canvas = document.querySelector<HTMLCanvasElement>("#stage");

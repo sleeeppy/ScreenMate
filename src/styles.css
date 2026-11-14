@@ -42,6 +42,10 @@ body {
   user-select: none;
 }
 
+.windows #hint {
+  font-family: "Pretendard Variable", Pretendard, "Segoe UI", "Malgun Gothic", sans-serif;
+}
+
 #babylonjsLoadingDiv {
   display: none !important;
 }
