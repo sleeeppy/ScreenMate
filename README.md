@@ -23,15 +23,6 @@
 </p>
 
 <p align="center">
-  <a href="#features">주요 기능</a> ·
-  <a href="#inapp">인앱</a> ·
-  <a href="#models">모델</a> ·
-  <a href="#install">설치</a> ·
-  <a href="#faq">자주 묻는 질문</a> ·
-  <a href="#build">직접 빌드하기</a>
-</p>
-
-<p align="center">
   <img src="docs/images/hero.gif" width="720" alt="커다란 미쿠가 화면 왼쪽 끝에서 몸을 내밀고 빼꼼 엿보며 다가오는 커서를 바라보다가 다시 숨는 모습">
 </p>
 
@@ -40,24 +31,24 @@
 <a id="features"></a>
 <h3><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/headings/features-dark.png"><img src="docs/images/headings/features-light.png" alt="주요 기능" width="85" height="30"></picture></h3>
 
-<p align="center"><b>창 테두리에 앉혀요</b></p>
 <p align="center">
   <img src="docs/images/sit.gif" width="720" alt="커서로 린의 엉덩이를 잡아 창 위로 끌어다 놓자 테두리에 걸터앉아 다리를 흔들고, 머리를 쓰다듬자 앉은 채로 웃는 모습">
 </p>
+<p align="center"><b>창 테두리에 앉혀요</b></p>
 
 <br>
 
-<p align="center"><b>잡아서 던져요</b></p>
 <p align="center">
   <img src="docs/images/hang.gif" width="720" alt="렌이 머리를 잡힌 채 좌우로 크게 흔들리는 모습">
 </p>
+<p align="center"><b>잡아서 던져요</b></p>
 
 <br>
 
-<p align="center"><b>가만두면 졸아요</b></p>
 <p align="center">
   <img src="docs/images/doze.gif" width="720" alt="미쿠가 창 테두리에 걸터앉아 고개를 숙이고 조는 모습">
 </p>
+<p align="center"><b>가만두면 졸아요</b></p>
 
 <br>
 
@@ -73,30 +64,25 @@
 <a id="inapp"></a>
 <h3><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/headings/inapp-dark.png"><img src="docs/images/headings/inapp-light.png" alt="인앱" width="42" height="30"></picture></h3>
 
-<p align="center"><b>모델 보관함</b></p>
 <p align="center">
   <img src="docs/images/app-library.png" width="800" alt="ScreenMate 창. 왼쪽에 카가미네 린·렌·하츠네 미쿠 폴더 카드가 모자이크로, 오른쪽에 쓰고 있는 린 미리보기와 캐릭터 설정">
 </p>
+<p align="center"><b>모델 보관함</b></p>
 
-<p align="center"><b>모델 가져오기</b></p>
 <p align="center">
   <img src="docs/images/app-import.png" width="800" alt="모델 가져오기 안내. .pmx·.pmd가 든 폴더를 고르면 보관함에 들어온다는 설명과 더 가져오기 버튼">
 </p>
+<p align="center"><b>모델 가져오기</b></p>
 
-<p align="center"><b>캐릭터 옵션</b></p>
 <p align="center">
   <img src="docs/images/app-options.png" width="800" alt="카가미네 린 폴더 안 모델 카드와 오른쪽 옵션. 크기, 커서 바라보기, 다양한 동작, 창 위에 올라가기, 입력이 없으면 졸기">
 </p>
+<p align="center"><b>캐릭터 옵션</b></p>
 
-<p align="center"><b>설정</b></p>
 <p align="center">
   <img src="docs/images/app-general.png" width="800" alt="설정 창. 로그인할 때 자동 시작, 업데이트, 데이터 폴더, 사용법, 종료">
 </p>
-
-<p align="center"><b>우클릭 빠른 메뉴</b></p>
-<p align="center">
-  <img src="docs/images/quickmenu.png" width="600" alt="미쿠 옆에 열린 빠른 메뉴. ScreenMate 열기, 커서 바라보기, 다양한 동작, 창 위에 올라가기, 크기, 종료">
-</p>
+<p align="center"><b>설정</b></p>
 
 ---
 
