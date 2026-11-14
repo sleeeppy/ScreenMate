@@ -13,6 +13,8 @@ import type { Emotion, ResolvedMorphs } from "./morphMap";
  *     윤곽선 더 얇게:                     "overrides": { "edgeScale": 0.6 }
  *     하얗게 뜨는 모델 음영 살리기:       "overrides": { "ambientScale": 0.6 }
  *     번들거리는 광택 줄이기:             "overrides": { "glossScale": 0.6 }
+ *     연하게 빠진 색 진하게:              "overrides": { "colorDepth": 0.12 }
+ *     너무 진한 색 연하게:                "overrides": { "colorDepth": -0.08 }
  * 저장소 모델용 기본값은 presets.ts에 있고, 여기 적은 값이 그보다 우선한다.
  */
 export interface ModelProfile {
@@ -38,6 +40,12 @@ export interface ProfileOverrides {
   ambientScale?: number;
   /** 광택 배율 (기본 1): 더하기 스피어맵과 스펙큘러 하이라이트 세기. 0이면 광택 없음 */
   glossScale?: number;
+  /**
+   * 텍스처 색을 흰색에서 이만큼 더 떨어뜨린다 (기본 0). 파스텔 텍스처가 연하게 보일 때 0.1 안팎,
+   * 음수면 반대로 흰색 쪽으로 옮겨 연해진다 (-0.1 안팎).
+   * 재질 모프가 있는 모델은 모프가 걸린 재질에서 이 값이 풀린다 (babylon-mmd 재질 프록시가 0으로 되돌림).
+   */
+  colorDepth?: number;
 }
 
 export function readOverrides(profile: unknown): ProfileOverrides {
@@ -49,7 +57,10 @@ export function readOverrides(profile: unknown): ProfileOverrides {
     return {};
   }
   const overrides: ProfileOverrides = {};
-  const { headY, morphs, physics, edgeScale, ambientScale, glossScale } = raw as Record<string, unknown>;
+  const { headY, morphs, physics, edgeScale, ambientScale, glossScale, colorDepth } = raw as Record<string, unknown>;
+  if (typeof colorDepth === "number" && colorDepth > -1 && colorDepth < 1) {
+    overrides.colorDepth = colorDepth;
+  }
   if (typeof ambientScale === "number" && ambientScale >= 0) {
     overrides.ambientScale = ambientScale;
   }

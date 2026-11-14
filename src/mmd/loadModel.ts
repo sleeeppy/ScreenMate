@@ -29,6 +29,7 @@ import { skirtArmMasks } from "./physicsBones.ts";
 import { PhysicsSmoother, physicsBoneAnchors } from "./physicsSmoothing";
 import { presetOverrides } from "./presets";
 import { applyOverrides, readOverrides } from "./profile";
+import "./shaderCompat";
 
 /** 장면당 하나: MMD 런타임과 Bullet 물리 */
 export interface MmdWorld {
@@ -131,7 +132,11 @@ export async function loadCharacter(
       }
     }
   }
-
+  if (overrides.colorDepth) {
+    for (const material of container.materials) {
+      if (material instanceof MmdStandardMaterial && material.diffuseTexture) material.textureAdditiveColor.a = overrides.colorDepth;
+    }
+  }
   place(mesh, calibration);
   mesh.computeWorldMatrix(true);
   // 물리 뼈 떨림 거르기: 어떤 뼈를 어느 뼈 기준으로 거를지는 메타데이터가 정리되기 전에 정한다
