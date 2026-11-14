@@ -9,12 +9,14 @@ import type { ProfileOverrides } from "./profile";
  * - YYB: 윤곽선 색이 밝은 갈색·분홍이라 테두리가 도드라진다 → 더 얇게.
  * - YYB 미쿠 default: 소매·치마·부츠·머리에 더하기 스피어맵과 강한 스펙큘러가 있어 번들거린다 → 광택을 줄인다.
  * - Miwashiba式 린·렌: VRoid 기반이라 텍스처가 파스텔 톤이어서 색이 연하게 빠져 보인다 → 조금 진하게.
+ * - 鏡音レン_gasl (VRM 변환): 다른 렌보다 색이 무겁게 보인다 → 조금 연하게.
  */
 const PRESETS: { match: RegExp; overrides: ProfileOverrides }[] = [
   { match: /^DIVA風水着セット--/, overrides: { ambientScale: 0.55, edgeScale: 0.75 } },
   { match: /^YYB式鏡音レン/, overrides: { edgeScale: 0.55 } },
   { match: /^YYB_Hatsune_Miku_default--/, overrides: { glossScale: 0.6 } },
   { match: /^Miwashiba式鏡音リンレン/, overrides: { colorDepth: 0.12 } },
+  { match: /^鏡音レン_gasl--/, overrides: { colorDepth: -0.08 } },
 ];
 
 export function presetOverrides(modelId: string): ProfileOverrides {
