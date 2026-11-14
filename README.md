@@ -24,7 +24,7 @@ npm run tauri dev
 - 또는 명령줄로 한 번에 (저장소 루트에서. 앱은 `src-tauri`에서 실행되므로 절대 경로로 넘긴다):
 
 ```bash
-npx tauri dev -- -- --import "$PWD/models/DIVA風水着セット" "$PWD/models/Sour式鏡音リン・レンVer.2.01" "$PWD/models/YYB式鏡音レンver1.00" "$PWD/models/Sour式初音ミクVer.1.02" "$PWD/models/もにた式初音ミクV6_Ver.1.2.1" "$PWD/models/もにた式初音ミク_Ver.1.1" "$PWD/models/YYB Hatsune Miku_default"
+npx tauri dev -- -- --import "$PWD/models/DIVA風水着セット" "$PWD/models/Sour式鏡音リン・レンVer.2.01" "$PWD/models/YYB式鏡音レンver1.00" "$PWD/models/Sour式初音ミクVer.1.02" "$PWD/models/もにた式初音ミクV6_Ver.1.2.1" "$PWD/models/もにた式初音ミク_Ver.1.1" "$PWD/models/YYB Hatsune Miku_default" "$PWD/models/Miwashiba式鏡音リンレンv2.02"
 ```
 
 앱 데이터 위치: Windows `%APPDATA%\dev.sleeeppy.screenmate`, macOS `~/Library/Application Support/dev.sleeeppy.screenmate`.
