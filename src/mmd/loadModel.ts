@@ -10,6 +10,7 @@ import "babylon-mmd/esm/Loader/mmdModelLoader";
 import "babylon-mmd/esm/Loader/mmdOutlineRenderer";
 import { MmdStandardMaterial } from "babylon-mmd/esm/Loader/mmdStandardMaterial";
 import type { MmdModelMetadata } from "babylon-mmd/esm/Loader/mmdModelMetadata";
+import { MmdPluginMaterialSphereTextureBlendMode } from "babylon-mmd/esm/Loader/mmdPluginMaterial.pure";
 import "babylon-mmd/esm/Loader/pmdLoader";
 import "babylon-mmd/esm/Loader/pmxLoader";
 import { MmdWasmInstanceTypeSPR } from "babylon-mmd/esm/Runtime/Optimized/InstanceType/singlePhysicsRelease";
@@ -118,6 +119,16 @@ export async function loadCharacter(
   if (overrides.ambientScale !== undefined && overrides.ambientScale !== 1) {
     for (const material of container.materials) {
       if (material instanceof MmdStandardMaterial) material.ambientColor.scaleInPlace(overrides.ambientScale);
+    }
+  }
+  if (overrides.glossScale !== undefined && overrides.glossScale !== 1) {
+    const gloss = overrides.glossScale;
+    for (const material of container.materials) {
+      if (!(material instanceof MmdStandardMaterial)) continue;
+      material.specularColor.scaleInPlace(gloss);
+      if (material.sphereTexture && material.sphereTextureBlendMode === MmdPluginMaterialSphereTextureBlendMode.Add) {
+        material.sphereTextureMultiplicativeColor.set(gloss, gloss, gloss, 1);
+      }
     }
   }
 

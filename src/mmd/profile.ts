@@ -12,6 +12,7 @@ import type { Emotion, ResolvedMorphs } from "./morphMap";
  *     물리 끄기:                          "overrides": { "physics": false }
  *     윤곽선 더 얇게:                     "overrides": { "edgeScale": 0.6 }
  *     하얗게 뜨는 모델 음영 살리기:       "overrides": { "ambientScale": 0.6 }
+ *     번들거리는 광택 줄이기:             "overrides": { "glossScale": 0.6 }
  * 저장소 모델용 기본값은 presets.ts에 있고, 여기 적은 값이 그보다 우선한다.
  */
 export interface ModelProfile {
@@ -35,6 +36,8 @@ export interface ProfileOverrides {
   edgeScale?: number;
   /** 재질 ambient 배율 (기본 1). 낮추면 빛 받는 쪽 포화가 줄고 음영이 드러난다 */
   ambientScale?: number;
+  /** 광택 배율 (기본 1): 더하기 스피어맵과 스펙큘러 하이라이트 세기. 0이면 광택 없음 */
+  glossScale?: number;
 }
 
 export function readOverrides(profile: unknown): ProfileOverrides {
@@ -46,9 +49,12 @@ export function readOverrides(profile: unknown): ProfileOverrides {
     return {};
   }
   const overrides: ProfileOverrides = {};
-  const { headY, morphs, physics, edgeScale, ambientScale } = raw as Record<string, unknown>;
+  const { headY, morphs, physics, edgeScale, ambientScale, glossScale } = raw as Record<string, unknown>;
   if (typeof ambientScale === "number" && ambientScale >= 0) {
     overrides.ambientScale = ambientScale;
+  }
+  if (typeof glossScale === "number" && glossScale >= 0) {
+    overrides.glossScale = glossScale;
   }
   if (typeof edgeScale === "number" && edgeScale >= 0) {
     overrides.edgeScale = edgeScale;
