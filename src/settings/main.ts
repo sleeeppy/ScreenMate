@@ -5,7 +5,8 @@
  *   - 고르기: 클릭, ⌘/Ctrl+클릭(더하기·빼기), Shift+클릭(범위), 빈 곳에서 끌기(사각형), ⌘A(전부). 두 번 클릭은 그 모델 쓰기.
  *   - 고른 모델을 폴더 카드로 끌면 그 폴더로, 위쪽 "모델"로 끌면 폴더 밖으로 (잠깐 대고 있으면 맨 위로 열린다).
  *   - 오른쪽 클릭 메뉴: 이름 바꾸기, 폴더로 이동, 삭제 / 폴더 이름 바꾸기·삭제. Delete 키로 삭제, F2로 이름 바꾸기.
- * 오른쪽: 고른 모델 미리보기, "이 모델 쓰기", 캐릭터 설정(크기·커서 바라보기·다양한 동작·창 위에 올라가기·졸기), 자동 시작.
+ * 오른쪽: 고른 모델 미리보기, "이 모델 쓰기", 캐릭터 설정(크기·커서 바라보기·다양한 동작·창 위에 올라가기·졸기).
+ * 위쪽 "일반 설정": 로그인할 때 자동 시작, 데이터 폴더, 종료처럼 캐릭터와 상관없는 앱 설정.
  * 설정은 Rust(settings.json), 폴더·이름은 Rust(models/library.json)가 갖고 있고 바뀌면 모든 창에 퍼진다.
  */
 import { getVersion } from "@tauri-apps/api/app";
@@ -21,7 +22,9 @@ import {
   onLibraryChanged,
   onModelsChanged,
   onSettingsChanged,
+  openDataFolder,
   openModelsFolder,
+  quitApp,
   saveLibrary,
   selectModel,
   updateSettings,
@@ -86,6 +89,8 @@ const ICONS = {
   move: '<path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2h7a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/><path d="m11 11.5 2.5 2-2.5 2M8 13.5h5.5"/>',
   out: '<path d="M14 5h5v5M19 5l-8 8"/><path d="M17 14v4a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h4"/>',
   play: '<path d="M8 6v12l10-6z"/>',
+  gear: '<circle cx="12" cy="12" r="3"/><path d="M12 3.5v2.2M12 18.3v2.2M20.5 12h-2.2M5.7 12H3.5M18 6l-1.6 1.6M7.6 16.4 6 18M18 18l-1.6-1.6M7.6 7.6 6 6"/>',
+  power: '<path d="M12 4v8"/><path d="M7.5 6.8a7 7 0 1 0 9 0"/>',
 };
 
 function icon(name: keyof typeof ICONS, size = 16): string {
@@ -210,6 +215,7 @@ function render(): void {
           <img src="${appIcon}" alt="" />ScreenMate <span class="version">${escape(state.version)}</span>
         </div>
         <div class="tools">
+          <button class="chip" data-action="general" title="일반 설정">${icon("gear", 14)}일반 설정</button>
           <button class="chip" data-action="open-models" title="가져온 모델 폴더 열기">${icon("folder", 14)}</button>
           <button class="chip" data-action="import">${icon("plus", 14)}모델 가져오기</button>
         </div>
@@ -415,7 +421,7 @@ function renderInspector(): string {
         <span class="value" id="height-value">${Math.round(settings.heightPx)}px</span>
       </div>
       ${toggle("gaze", "커서 바라보기", "가까이 온 커서를 눈과 고개로 따라봐요", settings.gaze)}
-      ${toggle("variety", "다양한 동작", "두리번거리기, 기지개, 앉아서 쉬기", settings.variety)}
+      ${toggle("variety", "다양한 동작", "창에 뛰어오르기, 화면 밖에서 엿보기, 앉아서 쉬기", settings.variety)}
       ${toggle("ledges", "창 위에 올라가기", "창 위에 내려앉고 걷고 걸터앉아요", settings.ledges)}
       <div class="panel-row stacked">
         <div class="text"><div class="label">입력이 없으면 졸기</div></div>
@@ -423,9 +429,6 @@ function renderInspector(): string {
           (choice) => `<button data-sleep="${choice.value}" class="${settings.sleepMinutes === choice.value ? "active" : ""}">${choice.label}</button>`,
         ).join("")}</div>
       </div>
-    </div>
-    <div class="panel">
-      ${toggle("autostart", "로그인할 때 자동 시작", "컴퓨터를 켜면 캐릭터도 같이 나와요", settings.autostart)}
     </div>`;
 }
 
@@ -812,6 +815,54 @@ function chooseFolder(payload: Payload, at?: { x: number; y: number }): void {
 
 let lastMenuPoint = { x: 200, y: 200 };
 
+// ------------------------------------------------------------------ 일반 설정
+
+/** 캐릭터와 상관없는 앱 설정 (자동 시작·데이터 폴더·종료). 오른쪽 패널은 캐릭터 설정만 둔다. */
+function openGeneral(): void {
+  const settings = state.settings;
+  if (!settings || document.querySelector(".general")) return;
+  const overlay = document.createElement("div");
+  overlay.className = "dialog-backdrop";
+  overlay.innerHTML = `
+    <div class="dialog general" role="dialog" aria-modal="true" aria-label="일반 설정">
+      <div class="general-head">
+        <h3>일반 설정</h3>
+        <button class="icon-button small" data-general="close" title="닫기 (esc)">${icon("close", 15)}</button>
+      </div>
+      <div class="panel">
+        ${toggle("autostart", "로그인할 때 자동 시작", "컴퓨터를 켜면 캐릭터도 같이 나와요", settings.autostart)}
+        <div class="panel-row">
+          <div class="text"><div class="label">데이터 폴더</div><div class="hint">설정·가져온 모델·썸네일이 들어 있어요</div></div>
+          <button class="button" data-general="data">${icon("folder", 14)}열기</button>
+        </div>
+      </div>
+      <div class="general-foot">
+        <span class="version">ScreenMate ${escape(state.version)}</span>
+        <button class="button" data-general="quit">${icon("power", 14)}종료</button>
+      </div>
+    </div>`;
+  const close = () => {
+    window.removeEventListener("keydown", onKeyDown, true);
+    overlay.classList.add("leaving");
+    window.setTimeout(() => overlay.remove(), 140);
+  };
+  const onKeyDown = (keyEvent: KeyboardEvent) => {
+    if (keyEvent.key !== "Escape") return;
+    keyEvent.preventDefault();
+    keyEvent.stopPropagation();
+    close();
+  };
+  overlay.addEventListener("click", (clickEvent) => {
+    const action = (clickEvent.target as Element).closest<HTMLElement>("[data-general]")?.dataset.general;
+    if (action === "close" || clickEvent.target === overlay) close();
+    else if (action === "data") void openDataFolder();
+    else if (action === "quit") void quitApp();
+  });
+  window.addEventListener("keydown", onKeyDown, true);
+  document.body.append(overlay);
+  bind(overlay);
+}
+
 // ------------------------------------------------------------------ 확인 창
 
 function confirmDialog(options: { title: string; body: string; confirm: string; danger?: boolean }): Promise<boolean> {
@@ -1033,6 +1084,7 @@ function bind(scope: ParentNode = root): void {
     button.addEventListener("click", () => {
       if (button.dataset.action === "import") void importModels();
       else if (button.dataset.action === "open-models") void openModelsFolder();
+      else if (button.dataset.action === "general") openGeneral();
     }),
   );
 }
@@ -1172,7 +1224,7 @@ async function change(patch: Partial<Omit<Settings, "modelId">>): Promise<void> 
 function syncSettings(): void {
   const settings = state.settings;
   if (!settings) return;
-  root.querySelectorAll<HTMLElement>("[data-toggle]").forEach((row) => {
+  document.querySelectorAll<HTMLElement>("[data-toggle]").forEach((row) => {
     const on = settings[row.dataset.toggle as ToggleKey];
     const button = row.querySelector(".switch");
     button?.classList.toggle("on", on);

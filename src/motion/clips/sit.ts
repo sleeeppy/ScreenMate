@@ -23,8 +23,71 @@ export const SIT_DROP = 9.5;
 export const SIT_HEAD_RATIO = 0.42;
 const LENGTH = 90;
 
+/** 다리 길이 (모델 단위): 허벅지, 종아리, 발목~바닥. 엉덩이 기본 높이 = 1.1 + 4.6 + 4.7 ≈ 10.4 */
+const THIGH = 4.6;
+const SHIN = 4.7;
+const ANKLE = 1.1;
+const HIP = ANKLE + THIGH + SHIN;
+
+/**
+ * 센터를 drop만큼 내렸을 때 발바닥이 바닥에 평평하게 닿는 다리 (다리 IK를 끄므로 직접 맞춘다).
+ * thigh: 허벅지가 수직에서 앞으로 든 각(도, 90 넘으면 무릎이 엉덩이보다 높음).
+ * feetBehind: 종아리가 뒤로 기울어 발이 엉덩이 아래(쪼그리기), 아니면 앞으로 기울어 발이 앞(앉아서 무릎 세우기).
+ * 예전에는 각을 눈대중으로 정해 엉덩이를 내리는 동안 발이 바닥 아래로 2~4 단위 꺼졌다 (일어선 것처럼 보임).
+ */
+function legsOnFloor(drop: number, thigh: number, feetBehind: boolean): Pose {
+  const reach = (HIP - drop - ANKLE - THIGH * Math.cos((thigh * Math.PI) / 180)) / SHIN;
+  const shin = ((feetBehind ? -1 : 1) * Math.acos(Math.max(-1, Math.min(1, reach))) * 180) / Math.PI;
+  const knee = -(thigh - shin);
+  return {
+    左足: { rx: thigh, rz: -4 },
+    右足: { rx: thigh, rz: 4 },
+    左ひざ: { rx: knee },
+    右ひざ: { rx: knee },
+    左足首: { rx: -shin },
+    右足首: { rx: -shin },
+  };
+}
+
 type Pose = Record<string, KeyValues>;
 type Seat = "edge" | "floor";
+
+/**
+ * 발바닥을 앉은 면 위 한 점에 딛게 하는 다리 (옆에서 본 2관절 IK, 무릎은 앞으로 굽는다).
+ * drop: 센터를 내린 만큼, forward: 엉덩이에서 발목까지 앞쪽 거리(음수면 뒤).
+ * 엉덩이를 뒤로 빼며 앉거나 일어서는 동안 발이 미끄러지지 않게, 자세마다 발 자리를 정해 각도를 구한다.
+ */
+function legsIk(drop: number, forward: number): Pose {
+  const down = HIP - drop - ANKLE;
+  const reach = Math.min(Math.hypot(forward, down), THIGH + SHIN - 0.01);
+  const toFoot = Math.atan2(forward, down);
+  const bend = Math.acos(Math.max(-1, Math.min(1, (THIGH * THIGH + reach * reach - SHIN * SHIN) / (2 * THIGH * reach))));
+  const thighRad = toFoot + bend;
+  const kneeX = THIGH * Math.sin(thighRad);
+  const kneeDown = THIGH * Math.cos(thighRad);
+  const shinRad = Math.atan2(forward - kneeX, down - kneeDown);
+  const deg = (rad: number) => (rad * 180) / Math.PI;
+  const thigh = deg(thighRad);
+  const shin = deg(shinRad);
+  return {
+    左足: { rx: thigh, rz: -4 },
+    右足: { rx: thigh, rz: 4 },
+    左ひざ: { rx: -(thigh - shin) },
+    右ひざ: { rx: -(thigh - shin) },
+    左足首: { rx: -shin },
+    右足首: { rx: -shin },
+  };
+}
+
+/**
+ * 걸터앉을 때 엉덩이를 뒤로 빼는 거리 (센터 Z+, 모델 단위). 사람은 쪼그렸다가 엉덩이를 뒤로 내려 앉는다.
+ * 무릎을 세우고 앉은 순간 발은 엉덩이 앞 8.8쯤(허벅지 110°)에 있어야 해서, 엉덩이를 6.5 빼면 발은 처음 자리에서 2.3만 앞으로 옮긴다.
+ * (발을 더 가까이 두면 무릎이 가슴까지 올라와 정면에서 치마 속이 보였다.)
+ * 예전에는 엉덩이를 제자리에 내리며 다리를 바로 늘어뜨려, 엉덩이가 아직 높은데 다리가 허공에 곧게 서 있었다.
+ */
+const EDGE_BACK = 3.5;
+/** 무릎을 세우고 걸터앉았을 때 발 자리 (처음 선 자리에서 앞으로) */
+const EDGE_FEET = 5.3;
 
 /**
  * 선 자세 (idle 0프레임 + 다리 IK가 KNEE_SOFT 0.1만큼 굽힌 다리). 전환 시작·끝.
@@ -70,7 +133,7 @@ function seatPose(place: Seat, sleepy: boolean): Pose {
   const armForward = edge ? (sleepy ? 34 : ARM_FORWARD + 10) : -28;
   const elbow = sleepy && edge ? 38 : ELBOW_RELAX - 4;
   return {
-    センター: { py: -SIT_DROP },
+    センター: edge ? { py: -SIT_DROP, pz: EDGE_BACK } : { py: -SIT_DROP },
     上半身: sleepy ? { rx: -9 } : edge ? { rx: -2, ry: 2 } : { rx: 9 },
     首: sleepy ? { rx: -16, rz: 5 } : edge ? { rx: -3, rz: 3 } : { rx: -6 },
     左腕: { rz: -ARM_RELAX - armDown, rx: armForward },
@@ -152,35 +215,6 @@ const PREPARE: Pose = {
   右足首: { rx: 14 },
 };
 
-/** 걸터앉을 때 쪼그린 다음: 엉덩이를 테두리로 내리며 다리를 앞으로 내민다 */
-const EDGE_LOWER: Pose = {
-  ...CROUCH,
-  センター: { py: -7.4 },
-  上半身: { rx: -9 },
-  首: { rx: 2 },
-  左腕: { rz: -ARM_RELAX - 4, rx: 18 },
-  右腕: { rz: ARM_RELAX + 4, rx: 18 },
-  左足: { rx: 72, rz: -3 },
-  右足: { rx: 72, rz: 3 },
-  左ひざ: { rx: -96 },
-  右ひざ: { rx: -88 },
-  左足首: { rx: 8 },
-  右足首: { rx: 8 },
-};
-
-/** 테두리에 엉덩이가 닿는 순간: 살짝 더 내려앉고(다시 올라와 안착) 다리가 앞으로 흔들린다 */
-function edgeLand(): Pose {
-  const seat = seatPose("edge", false);
-  return {
-    ...seat,
-    センター: { py: -SIT_DROP - 0.25 },
-    上半身: { rx: -5, ry: 0 },
-    首: { rx: -1, rz: 1 },
-    左ひざ: { rx: -92 },
-    右ひざ: { rx: -82 },
-  };
-}
-
 /** 바닥에 앉을 때 쪼그린 다음: 손을 뒤로 짚고 엉덩이를 내린다 (무릎은 아직 굽힌 채) */
 const FLOOR_LOWER: Pose = {
   ...CROUCH,
@@ -189,12 +223,7 @@ const FLOOR_LOWER: Pose = {
   首: { rx: -2 },
   左腕: { rz: -ARM_RELAX - 6, rx: -22 },
   右腕: { rz: ARM_RELAX + 6, rx: -22 },
-  左足: { rx: 78, rz: -3 },
-  右足: { rx: 78, rz: 3 },
-  左ひざ: { rx: -92 },
-  右ひざ: { rx: -92 },
-  左足首: { rx: 30 },
-  右足首: { rx: 30 },
+  ...legsOnFloor(8.4, 112, false),
 };
 
 /** 엉덩이가 바닥에 닿은 뒤: 무릎을 세운 채 살짝 내려앉았다가 다리를 뻗는다 */
@@ -204,42 +233,185 @@ function floorLand(): Pose {
     ...seat,
     センター: { py: -SIT_DROP - 0.2 },
     上半身: { rx: 6 },
-    左ひざ: { rx: -58 },
-    右ひざ: { rx: -58 },
-    左足首: { rx: 24 },
-    右足首: { rx: 24 },
+    ...legsOnFloor(SIT_DROP + 0.2, 120, false),
   };
 }
 
-/** 일어설 때 걸터앉은 자리에서: 손으로 테두리를 짚어 누른다 */
-const EDGE_PUSH: Pose = {
-  ...seatPose("edge", false),
-  センター: { py: -SIT_DROP + 0.1 },
-  上半身: { rx: -14 },
-  首: { rx: 2 },
-  左腕: { rz: -ARM_RELAX - 12, rx: 24 },
-  右腕: { rz: ARM_RELAX + 12, rx: 24 },
-  左ひざ: { rx: -108 },
-  右ひざ: { rx: -108 },
+/** 쪼그려 앉아 두 손을 무릎에 얹고 앉을 자리를 내려다본다 (앉기 전 잠깐 멈추는 자세) */
+const CROUCH_LOOK: Pose = {
+  ...CROUCH,
+  センター: { py: -3.8 },
+  上半身: { rx: -24 },
+  首: { rx: 12 },
+  左腕: { rz: -ARM_RELAX + 4, rx: 30 },
+  右腕: { rz: ARM_RELAX - 4, rx: 30 },
+  左ひじ: { ry: 40 },
+  右ひじ: { ry: -40 },
+  左足: { rx: 54, rz: -4 },
+  右足: { rx: 54, rz: 4 },
+  左ひざ: { rx: -106 },
+  右ひざ: { rx: -106 },
+  左足首: { rx: 52 },
+  右足首: { rx: 52 },
 };
 
-/** 일어설 때: 앉은 자리에서 상체를 숙이고 다리를 몸 쪽으로 당긴다 */
-function riseGather(place: Seat): Pose {
+/** 바닥: 쪼그린 채 한 손을 몸 뒤 바닥으로 뻗는다 (몸을 살짝 틀고 엉덩이를 내리기 시작) */
+const FLOOR_REACH: Pose = {
+  ...CROUCH_LOOK,
+  センター: { py: -5.4 },
+  上半身: { rx: -12, ry: -10 },
+  首: { rx: 4, ry: -8 },
+  左腕: { rz: -ARM_RELAX + 2, rx: 22 },
+  右腕: { rz: ARM_RELAX + 10, rx: -34 },
+  左ひじ: { ry: 26 },
+  右ひじ: { ry: -6 },
+  ...legsOnFloor(5.4, 72, true),
+};
+
+/** 바닥: 엉덩이를 대고 무릎을 세운 채 잠깐 (다리를 뻗기 전) */
+function floorKneesUp(): Pose {
+  const seat = seatPose("floor", false);
   return {
-    ...CROUCH,
-    センター: { py: -8.2 },
-    上半身: { rx: -26 },
-    首: { rx: 8 },
-    左腕: place === "edge" ? { rz: -ARM_RELAX - 8, rx: 26 } : { rz: -ARM_RELAX + 4, rx: 30 },
-    右腕: place === "edge" ? { rz: ARM_RELAX + 8, rx: 26 } : { rz: ARM_RELAX - 4, rx: 30 },
-    左足: { rx: 80, rz: -3 },
-    右足: { rx: 80, rz: 3 },
-    左ひざ: { rx: -118 },
-    右ひざ: { rx: -118 },
-    左足首: { rx: 40 },
-    右足首: { rx: 40 },
+    ...seat,
+    上半身: { rx: 7 },
+    首: { rx: -4 },
+    左腕: { rz: -ARM_RELAX - 6, rx: -26 },
+    右腕: { rz: ARM_RELAX + 6, rx: -26 },
+    ...legsOnFloor(SIT_DROP, 116, false),
   };
 }
+
+/** 걸터앉기: 쪼그린 채 두 손으로 창 테두리를 짚는다 (팔을 아래로 곧게, 상체를 숙여 무게를 손에) */
+const EDGE_HANDS: Pose = {
+  ...CROUCH_LOOK,
+  センター: { py: -4.4 },
+  上半身: { rx: -20 },
+  首: { rx: 8 },
+  左腕: { rz: -ARM_RELAX - 14, rx: 8 },
+  右腕: { rz: ARM_RELAX + 14, rx: 8 },
+  左ひじ: { ry: 8 },
+  右ひじ: { ry: -8 },
+  ...legsIk(4.4, 0),
+};
+
+/** 손으로 버티며 엉덩이를 뒤로 내린다 (발은 거의 제자리) */
+const EDGE_SIT_BACK: Pose = {
+  ...EDGE_HANDS,
+  センター: { py: -7.4, pz: EDGE_BACK * 0.55 },
+  上半身: { rx: -14 },
+  首: { rx: 6 },
+  左腕: { rz: -ARM_RELAX - 12, rx: -2 },
+  右腕: { rz: ARM_RELAX + 12, rx: -2 },
+  ...legsIk(7.4, EDGE_BACK * 0.55 + EDGE_FEET * 0.3),
+};
+
+/** 엉덩이가 테두리에 닿은 자세: 무릎을 세우고 발은 테두리 위, 두 손은 엉덩이 옆을 짚는다. lean: 상체 앞 숙임 */
+function edgeKneesUp(lean: number): Pose {
+  return {
+    ...seatPose("edge", false),
+    センター: { py: -SIT_DROP + 0.1, pz: EDGE_BACK },
+    上半身: { rx: lean },
+    首: { rx: 4 },
+    左腕: { rz: -ARM_RELAX - 12, rx: -8 },
+    右腕: { rz: ARM_RELAX + 12, rx: -8 },
+    左ひじ: { ry: 10 },
+    右ひじ: { ry: -10 },
+    ...legsIk(SIT_DROP - 0.1, EDGE_BACK + EDGE_FEET),
+  };
+}
+
+/** 무릎을 펴며 두 발을 테두리 앞 허공으로 내민다 (상체는 살짝 뒤로, 손은 그대로 짚고) */
+function edgeLegsOut(): Pose {
+  return {
+    ...seatPose("edge", false),
+    センター: { py: -SIT_DROP, pz: EDGE_BACK },
+    上半身: { rx: 2 },
+    首: { rx: 0, rz: 1 },
+    左腕: { rz: -ARM_RELAX - 12, rx: -10 },
+    右腕: { rz: ARM_RELAX + 12, rx: -10 },
+    左ひじ: { ry: 10 },
+    右ひじ: { ry: -10 },
+    左足: { rx: 100, rz: -3 },
+    右足: { rx: 97, rz: 3 },
+    左ひざ: { rx: -34 },
+    右ひざ: { rx: -44 },
+    左足首: { rx: -20 },
+    右足首: { rx: -16 },
+  };
+}
+
+/** 종아리가 떨어져 늘어지는 순간: 살짝 더 내려앉고(다시 올라와 안착) 다리가 앞뒤로 엇갈린다 */
+function edgeLand(): Pose {
+  return {
+    ...seatPose("edge", false),
+    センター: { py: -SIT_DROP - 0.25, pz: EDGE_BACK },
+    上半身: { rx: -4, ry: 0 },
+    首: { rx: -1, rz: 1 },
+    左ひざ: { rx: -96 },
+    右ひざ: { rx: -84 },
+  };
+}
+
+/** 걸터앉은 뒤 다리가 앞뒤로 한 번 더 흔들린다 (반동이 잦아든다) */
+function edgeSwing(): Pose {
+  return {
+    ...seatPose("edge", false),
+    上半身: { rx: -3, ry: 1 },
+    首: { rx: -2, rz: 2 },
+    左ひざ: { rx: -78 },
+    右ひざ: { rx: -108 },
+  };
+}
+
+/** 일어서기 전: 다리 흔들기를 멈추고 두 손으로 테두리를 짚는다 */
+const EDGE_GRIP: Pose = {
+  ...seatPose("edge", false),
+  上半身: { rx: -6 },
+  首: { rx: 3 },
+  左腕: { rz: -ARM_RELAX - 12, rx: -6 },
+  右腕: { rz: ARM_RELAX + 12, rx: -6 },
+  左ひじ: { ry: 8 },
+  右ひじ: { ry: -8 },
+  左ひざ: { rx: -96 },
+  右ひざ: { rx: -96 },
+  左足首: { rx: -12 },
+  右足首: { rx: -12 },
+};
+
+/**
+ * 테두리 위에 세운 발로 올라서는 중간 자세. 상체를 숙이고 팔을 앞으로 내밀며 엉덩이를 들어 발 위로 옮긴다.
+ * 발 자리를 정해 다리 각도를 구하므로(legsIk) 키 사이가 짧으면 발이 거의 미끄러지지 않는다.
+ * drop: 센터 내림, back: 엉덩이를 뒤로 뺀 정도(EDGE_BACK 배수), feet: 발 자리(처음 선 자리에서 앞으로), arms: 팔 앞으로 든 각.
+ */
+function edgeRise(drop: number, back: number, lean: number, feet: number, arms: number): Pose {
+  return {
+    ...CROUCH,
+    センター: { py: -drop, pz: EDGE_BACK * back },
+    上半身: { rx: lean },
+    首: { rx: 8 - lean * 0.15 },
+    左腕: { rz: -ARM_RELAX + 6, rx: arms },
+    右腕: { rz: ARM_RELAX - 6, rx: arms },
+    左ひじ: { ry: ELBOW_RELAX + 14 },
+    右ひじ: { ry: -ELBOW_RELAX - 14 },
+    ...legsIk(drop, EDGE_BACK * back + feet),
+  };
+}
+
+/** 바닥에서 일어설 때: 앉은 자리에서 상체를 숙이고 다리를 몸 쪽으로 당긴다 */
+const FLOOR_GATHER: Pose = {
+  ...CROUCH,
+  センター: { py: -8.2 },
+  上半身: { rx: -26 },
+  首: { rx: 8 },
+  左腕: { rz: -ARM_RELAX + 4, rx: 30 },
+  右腕: { rz: ARM_RELAX - 4, rx: 30 },
+  左足: { rx: 80, rz: -3 },
+  右足: { rx: 80, rz: 3 },
+  左ひざ: { rx: -118 },
+  右ひざ: { rx: -118 },
+  左足首: { rx: 40 },
+  右足首: { rx: 40 },
+};
 
 /** 바닥에서 일어설 때 먼저: 뻗은 다리를 무릎을 세워 당기고 손은 뒤를 짚는다 */
 const FLOOR_KNEES_IN: Pose = {
@@ -282,24 +454,39 @@ const OVERLAP: Record<string, number> = {
   右ひじ: 4,
 };
 
+/**
+ * 앉기 전환. 한 단계씩 눈에 보이게 (예전 1.3초짜리는 서 있다가 툭 주저앉는 것처럼 보였다).
+ * 바닥 (2.6초): 내려다봄 → 쪼그려 무릎에 손 → 한 손을 뒤 바닥으로 → 엉덩이를 내림 → 무릎 세우고 잠깐 → 다리를 뻗고 자리 잡기.
+ * 걸터앉기 (3.1초): 내려다봄 → 쪼그림 → 두 손으로 테두리를 짚음 → 엉덩이를 뒤로 빼며 내려 무릎을 세우고 앉음(발은 테두리 위)
+ *   → 무릎을 펴며 발을 테두리 앞으로 → 종아리가 떨어져 늘어지고 앞뒤로 흔들리다 자리 잡기.
+ * 걸터앉았다 일어서기 (2.1초): 손으로 짚음 → 발을 앞으로 들어 테두리 위에 세움 → 상체를 숙이고 팔을 내밀며 발 위로 올라섬 → 일어섬.
+ */
 function sitDown(place: Seat): Motion {
   const edge = place === "edge";
-  const length = edge ? 40 : 46;
+  const length = edge ? 92 : 78;
   const steps = edge
     ? [
         { frame: 0, pose: STAND },
-        { frame: 6, pose: PREPARE },
-        { frame: 16, pose: CROUCH },
-        { frame: 26, pose: EDGE_LOWER },
-        { frame: 33, pose: edgeLand() },
+        { frame: 8, pose: PREPARE },
+        { frame: 18, pose: CROUCH_LOOK },
+        { frame: 28, pose: EDGE_HANDS },
+        { frame: 38, pose: EDGE_SIT_BACK },
+        { frame: 47, pose: edgeKneesUp(-10) },
+        { frame: 53, pose: edgeKneesUp(-7) },
+        { frame: 63, pose: edgeLegsOut() },
+        { frame: 72, pose: edgeLand() },
+        { frame: 81, pose: edgeSwing() },
         { frame: length, pose: seatPose(place, false) },
       ]
     : [
         { frame: 0, pose: STAND },
-        { frame: 6, pose: PREPARE },
-        { frame: 17, pose: CROUCH },
-        { frame: 28, pose: FLOOR_LOWER },
-        { frame: 35, pose: floorLand() },
+        { frame: 8, pose: PREPARE },
+        { frame: 20, pose: CROUCH_LOOK },
+        { frame: 28, pose: CROUCH_LOOK },
+        { frame: 39, pose: FLOOR_REACH },
+        { frame: 48, pose: FLOOR_LOWER },
+        { frame: 55, pose: floorLand() },
+        { frame: 64, pose: floorKneesUp() },
         { frame: length, pose: seatPose(place, false) },
       ];
   return defineMotion({
@@ -315,20 +502,24 @@ function sitDown(place: Seat): Motion {
 
 function standUp(place: Seat): Motion {
   const edge = place === "edge";
-  const length = edge ? 40 : 46;
+  const length = edge ? 64 : 46;
   const steps = edge
     ? [
         { frame: 0, pose: seatPose(place, false) },
-        { frame: 8, pose: EDGE_PUSH },
-        { frame: 17, pose: riseGather(place) },
-        { frame: 26, pose: CROUCH },
-        { frame: 34, pose: STAND_SETTLE },
+        { frame: 8, pose: EDGE_GRIP },
+        { frame: 18, pose: edgeLegsOut() },
+        { frame: 27, pose: edgeKneesUp(-14) },
+        { frame: 32, pose: edgeRise(8.8, 0.8, -22, EDGE_FEET, 14) },
+        { frame: 37, pose: edgeRise(7.4, 0.45, -30, EDGE_FEET, 34) },
+        { frame: 42, pose: edgeRise(5.9, 0.15, -27, EDGE_FEET * 0.7, 34) },
+        { frame: 47, pose: edgeRise(4.4, 0, -20, EDGE_FEET * 0.45, 28) },
+        { frame: 56, pose: STAND_SETTLE },
         { frame: length, pose: STAND },
       ]
     : [
         { frame: 0, pose: seatPose(place, false) },
         { frame: 10, pose: FLOOR_KNEES_IN },
-        { frame: 21, pose: riseGather(place) },
+        { frame: 21, pose: FLOOR_GATHER },
         { frame: 30, pose: CROUCH },
         { frame: 39, pose: STAND_SETTLE },
         { frame: length, pose: STAND },
@@ -344,6 +535,130 @@ function standUp(place: Seat): Motion {
   });
 }
 
+/** 매달리기(hang.ts) 0프레임 자세. 들고 있다 놓아 바로 걸터앉을 때 첫 프레임을 이것과 맞춰 자세가 튀지 않게 한다. */
+const HANG: Pose = {
+  センター: { py: 0 },
+  上半身: { rx: -4, ry: -3 },
+  首: { rx: -9, rz: 4 },
+  左腕: { rz: -ARM_RELAX - 6, rx: ARM_FORWARD + 4 },
+  右腕: { rz: ARM_RELAX + 3, rx: ARM_FORWARD + 9 },
+  左ひじ: { ry: 10 },
+  右ひじ: { ry: -16 },
+  左足: { rx: 14, rz: -4 },
+  右足: { rx: 5, rz: 3 },
+  左ひざ: { rx: -30, rz: 9 },
+  右ひざ: { rx: -14, rz: -6 },
+  左足首: { rx: -22, ry: 8 },
+  右足首: { rx: -18, ry: -8 },
+};
+
+/**
+ * 들고 있다가 엉덩이가 창 테두리에 오게 놓으면 바로 걸터앉는다 (1.2초).
+ * 첫 프레임은 매달린 자세 그대로. 행동이 발 기준점을 테두리로 옮기고 그림을 놓은 자리에서 8프레임에 걸쳐 테두리로 올리는
+ * 동안(behavior.ts SEAT_DROP.glide) 엉덩이를 앉은 높이로 내려, 화면에서는 엉덩이가 제자리에서 테두리에 닿는다.
+ * → 반동으로 다리가 앞으로 → 뒤로 흔들리다 → 자리 잡기.
+ */
+function sitDropEdge(): Motion {
+  const length = 36;
+  const seat = seatPose("edge", false);
+  const hands = { 左腕: { rz: -ARM_RELAX - 12, rx: -6 }, 右腕: { rz: ARM_RELAX + 12, rx: -6 }, 左ひじ: { ry: 10 }, 右ひじ: { ry: -10 } };
+  const steps = [
+    { frame: 0, pose: HANG },
+    {
+      frame: 8,
+      pose: {
+        ...seat,
+        ...hands,
+        センター: { py: -SIT_DROP - 0.5, pz: EDGE_BACK * 0.4 },
+        上半身: { rx: -10 },
+        首: { rx: 6, rz: 2 },
+        左足: { rx: 52, rz: -3 },
+        右足: { rx: 44, rz: 3 },
+        左ひざ: { rx: -52 },
+        右ひざ: { rx: -40 },
+        左足首: { rx: -18 },
+        右足首: { rx: -16 },
+      },
+    },
+    {
+      frame: 15,
+      pose: {
+        ...seat,
+        ...hands,
+        センター: { py: -SIT_DROP + 0.15, pz: EDGE_BACK },
+        上半身: { rx: -3 },
+        首: { rx: -2, rz: 1 },
+        左ひざ: { rx: -62 },
+        右ひざ: { rx: -84 },
+      },
+    },
+    { frame: 24, pose: { ...seat, 上半身: { rx: -4, ry: 1 }, 左ひざ: { rx: -106 }, 右ひざ: { rx: -78 } } },
+    { frame: length, pose: seat },
+  ];
+  return defineMotion({
+    name: "sit_drop_edge",
+    label: "놓으면 걸터앉기",
+    loop: false,
+    length,
+    fadeIn: 0,
+    legIk: false,
+    bones: splinePose(steps, length, OVERLAP),
+    morphs: {
+      trouble: [k(0, { w: 0.55 }), k(10, { w: 0 }), k(length, { w: 0 })],
+      smile: [k(0, { w: 0 }), k(12, { w: 0.4 }), k(length, { w: 0.25 })],
+    },
+  });
+}
+
+/**
+ * 앉은 채 머리를 쓰다듬을 때 (1.5초). 서 있을 때의 pat처럼 고개를 숙여 갸웃하고 어깨를 움츠리며 웃는다.
+ * 걸터앉았으면 두 손을 무릎 위로 모으고 다리를 신나게 번갈아 흔들고, 바닥이면 뒤로 짚은 손은 그대로 둔다.
+ * 처음·끝은 앉은 자세(반복 0프레임)라 앉기 반복과 이음매 없이 이어진다.
+ */
+function sitPat(place: Seat): Motion {
+  const edge = place === "edge";
+  const length = 45;
+  const seat: Pose = { ...seatPose(place, false), 頭: {}, 左肩: {}, 右肩: {} };
+  const lap: Pose = edge
+    ? {
+        左腕: { rz: -ARM_RELAX + 6, rx: ARM_FORWARD + 26, ry: 10 },
+        右腕: { rz: ARM_RELAX - 6, rx: ARM_FORWARD + 26, ry: -10 },
+        左ひじ: { ry: ELBOW_RELAX + 30 },
+        右ひじ: { ry: -ELBOW_RELAX - 30 },
+      }
+    : {};
+  const shrug = (tilt: number, kneeL: number, kneeR: number): Pose => ({
+    ...seat,
+    ...lap,
+    上半身: { rx: edge ? -6 : 6 },
+    首: { rx: -11, rz: tilt },
+    頭: { rx: -5, rz: tilt * 0.6 },
+    左肩: { rz: 5 },
+    右肩: { rz: -5 },
+    ...(edge ? ({ 左ひざ: { rx: kneeL }, 右ひざ: { rx: kneeR } } as Pose) : {}),
+  });
+  const steps = [
+    { frame: 0, pose: seat },
+    { frame: 8, pose: shrug(6, -82, -104) },
+    { frame: 19, pose: shrug(-3, -106, -78) },
+    { frame: 30, pose: shrug(4, -80, -102) },
+    { frame: length, pose: seat },
+  ];
+  return defineMotion({
+    name: `sit_pat_${place}`,
+    label: edge ? "걸터앉아 쓰다듬기 반응" : "앉아서 쓰다듬기 반응",
+    loop: false,
+    length,
+    fadeIn: 0.15,
+    legIk: false,
+    bones: splinePose(steps, length, OVERLAP),
+    morphs: {
+      smile: [k(0, { w: 0.25 }), k(6, { w: 1 }), k(38, { w: 1 }), k(length, { w: 0.25 })],
+      shy: [k(0, { w: 0 }), k(10, { w: 0.6 }), k(40, { w: 0.6 }), k(length, { w: 0 })],
+    },
+  });
+}
+
 export const sitEdge = seatLoop("sit_edge", "걸터앉기", "edge", false);
 export const sitFloor = seatLoop("sit_floor", "바닥에 앉기", "floor", false);
 export const sleepEdge = seatLoop("sleep_edge", "걸터앉아 졸기", "edge", true);
@@ -352,3 +667,6 @@ export const sitDownEdge = sitDown("edge");
 export const sitDownFloor = sitDown("floor");
 export const standUpEdge = standUp("edge");
 export const standUpFloor = standUp("floor");
+export const sitDropEdgeMotion = sitDropEdge();
+export const sitPatEdge = sitPat("edge");
+export const sitPatFloor = sitPat("floor");

@@ -1515,3 +1515,50 @@ input.rename {
   background: linear-gradient(160deg, #34343c, #26262c);
   color: #8fb4ff;
 }
+
+/* ------------------------------------------------------------------ 일반 설정 */
+
+.dialog.general {
+  width: 440px;
+  padding: 18px 18px 16px;
+}
+
+.general-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.general-head h3 {
+  margin: 0;
+}
+
+.general .panel-row .button {
+  flex: none;
+  height: 30px;
+  padding: 0 12px;
+}
+
+.general-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 14px;
+}
+
+.general-foot .version {
+  color: var(--faint);
+  font-size: 12px;
+}
+
+.general-foot .button {
+  height: 30px;
+  padding: 0 12px;
+  color: var(--muted);
+}
+
+.general-foot .button:hover {
+  background: rgba(255, 95, 87, 0.14);
+  color: var(--danger);
+}

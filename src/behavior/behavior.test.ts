@@ -153,12 +153,50 @@ test("창 테두리 아래에서 놓으면 창을 통과해 바닥까지 떨어�
   const withLedge: Arena = { ...arena, ledges: [ledge(7, 600, 300, 900)] };
   behavior.place(500, withLedge);
   behavior.grab({ x: 500, y: 700 }, 0); // 발 y=1000 → 잡은 점 아래로 300
-  behavior.drag({ x: 500, y: 450 }, 16); // 발이 y=750 (테두리 아래)
+  behavior.drag({ x: 500, y: 600 }, 16); // 발이 y=900, 엉덩이(키 260의 0.62배 위)도 테두리보다 한참 아래
   for (let i = 0; i < 30; i++) behavior.update(1 / 60, withLedge);
   behavior.release(1000, withLedge);
   for (let i = 0; i < 120; i++) behavior.update(1 / 60, withLedge);
   assert.ok(!behavior.onLedge);
   assert.equal(behavior.feet.y, arena.ground);
+});
+
+test("엉덩이가 창 테두리 근처에 오게 놓으면 바로 걸터앉고, 그림은 놓은 자리에서 테두리로 미끄러지듯 옮겨 간다", () => {
+  const { actor, played, finishMotion } = makeActor();
+  const behavior = new Behavior(actor, sequence(0.9));
+  const withLedge: Arena = { ...arena, ledges: [ledge(7, 600, 300, 900)] };
+  behavior.place(500, withLedge);
+  behavior.grab({ x: 500, y: 700 }, 0); // 발 y=1000 → 잡은 점 아래로 300
+  behavior.drag({ x: 500, y: 420 }, 16); // 발 y≈720 → 엉덩이 ≈ 720 - 161 = 559 (테두리 600보다 41 위, 앉은 엉덩이보다 18 위)
+  for (let i = 0; i < 30; i++) behavior.update(1 / 60, withLedge);
+  behavior.release(1000, withLedge);
+  assert.equal(behavior.state, "sit");
+  assert.ok(behavior.onLedge);
+  assert.equal(behavior.feet.y, 600);
+  assert.equal(behavior.seat, "edge");
+  assert.equal(played.at(-1), "sit_drop_edge");
+  // 그림은 놓은 자리(발 y≈720)에서 시작해 테두리 높이로 올라간다 (그동안 모션이 엉덩이를 앉은 높이로 내린다)
+  assert.ok(behavior.shownFeet.y > 700);
+  for (let i = 0; i < 30; i++) behavior.update(1 / 60, withLedge);
+  assert.equal(behavior.shownFeet.y, 600);
+  finishMotion();
+  assert.equal(played.at(-1), "sit_edge");
+  assert.equal(behavior.state, "sit");
+});
+
+test("엉덩이가 테두리 근처여도 세게 던지면 걸터앉지 않고 날아간다", () => {
+  const { actor } = makeActor();
+  const behavior = new Behavior(actor, sequence(0.9));
+  const withLedge: Arena = { ...arena, ledges: [ledge(7, 600, 300, 900)] };
+  behavior.place(500, withLedge);
+  behavior.grab({ x: 500, y: 700 }, 0);
+  behavior.drag({ x: 500, y: 420 }, 16);
+  for (let i = 0; i < 30; i++) behavior.update(1 / 60, withLedge);
+  behavior.drag({ x: 560, y: 420 }, 520);
+  behavior.drag({ x: 700, y: 420 }, 560); // 0.04초에 140px = 3500px/s 옆으로
+  behavior.release(565, withLedge);
+  assert.equal(behavior.state, "fall");
+  assert.ok(!behavior.onLedge);
 });
 
 test("창 테두리 근처에서 놓으면 바로 그 창 위에 선다", () => {
@@ -353,7 +391,8 @@ test("variety: 창 위에서 쉬다가 걸터앉고, 앉은 채 창을 따라가
   run2(behavior, 4.1, onWindow);
   assert.equal(behavior.state, "sit");
   assert.equal(behavior.seat, "edge");
-  // 먼저 앉는 모션, 끝나면 걸터앉기 반복
+  // 먼저 앉을 방향으로 돌아선 다음 앉는 모션, 끝나면 걸터앉기 반복
+  run2(behavior, 0.8, onWindow);
   assert.equal(made.played.at(-1), "sit_down_edge");
   assert.equal(behavior.activity(), "interact");
   made.finishMotion();
@@ -378,6 +417,7 @@ test("오래 입력이 없으면 앉아서 졸고, 입력이 오면 일어선다
   run(behavior, 5.2);
   assert.equal(behavior.state, "sleep");
   assert.equal(behavior.seat, "floor");
+  run(behavior, 0.8); // 돌아선 다음 앉기
   assert.equal(played.at(-1), "sit_down_floor");
   finishMotion();
   assert.equal(played.at(-1), "sleep_floor");
@@ -393,7 +433,7 @@ test("앉는 도중에 잡으면 매달리고, 놓아도 앉기 반복으로 넘
   const { actor, played, finishMotion } = makeActor();
   const behavior = new Behavior(actor, sequence(0.99), { sleepAfter: 1 });
   behavior.place(500, arena);
-  run(behavior, 1.2);
+  run(behavior, 2);
   assert.equal(played.at(-1), "sit_down_floor");
   behavior.grab({ x: 500, y: 900 }, 0);
   finishMotion(); // (드라이버는 새 모션을 재생하면 이전 콜백을 버리지만, 와도 무시해야 한다)
@@ -408,12 +448,42 @@ test("앉아 있을 때는 낮아진 머리를 쓰다듬는다", () => {
   behavior.place(500, arena);
   run(behavior, 1.2);
   assert.equal(behavior.state, "sleep");
+  run(behavior, 1); // 앉을 쪽으로 돌아서 앉기 시작
+  assert.equal(played.at(-1), "sit_down_floor");
+  finishMotion();
+  assert.equal(played.at(-1), "sleep_floor");
   // 앉은 머리 높이(키 0.42배) 근처 → 쓰다듬기, 서 있을 때 기준(0.9배)이면 머리 위 허공이다.
-  // 앉아 있으면 먼저 일어서고, 다 일어서면 쓰다듬기 반응
+  // 일어서지 않고 앉은 채 반응하고(졸던 눈도 뜬다), 끝나면 앉기 반복으로 돌아간다
   behavior.click({ x: 500, y: 1000 - 260 * 0.4 });
+  assert.equal(played.at(-1), "sit_pat_floor");
+  assert.equal(behavior.state, "sit");
+  finishMotion();
+  assert.equal(played.at(-1), "sit_floor");
+  assert.equal(behavior.state, "sit");
+  // 몸을 찌르면 일어선 다음 반응한다
+  behavior.click({ x: 500, y: 1000 - 260 * 0.1 });
   assert.equal(played.at(-1), "stand_up_floor");
   finishMotion();
-  assert.equal(played.at(-1), "pat");
+  assert.equal(played.at(-1), "poke");
+});
+
+test("걸터앉아 있을 때도 앉은 채 쓰다듬는다", () => {
+  const { actor, played, finishMotion } = makeActor();
+  const behavior = new Behavior(actor, sequence(0.9));
+  const withLedge: Arena = { ...arena, ledges: [ledge(7, 600, 300, 900)] };
+  behavior.place(500, withLedge);
+  behavior.grab({ x: 500, y: 700 }, 0);
+  behavior.drag({ x: 500, y: 420 }, 16);
+  for (let i = 0; i < 30; i++) behavior.update(1 / 60, withLedge);
+  behavior.release(1000, withLedge); // 엉덩이가 테두리 근처 → 바로 걸터앉기
+  finishMotion();
+  assert.equal(played.at(-1), "sit_edge");
+  behavior.click({ x: 500, y: 600 - 260 * 0.4 });
+  assert.equal(played.at(-1), "sit_pat_edge");
+  assert.equal(behavior.state, "sit");
+  assert.ok(behavior.onLedge);
+  finishMotion();
+  assert.equal(played.at(-1), "sit_edge");
 });
 
 test("창이 일정하게 움직이면 매 프레임 고르게 따라간다 (창 위치가 두 프레임에 한 번 바뀌어도)", () => {
@@ -487,4 +557,185 @@ test("모니터를 옮기면 들고 있던 좌표가 같은 만큼 옮겨지고 
   behavior.drag({ x: 520 - 1920, y: 830 }, 32);
   for (let i = 0; i < 30; i++) behavior.update(1 / 60, { ...arena, left: -4000 });
   assert.ok(Math.abs(behavior.feet.x - (before.x - 1920)) < 30, `x=${behavior.feet.x}`);
+});
+
+test("자율: 닿는 창이 있으면 그 아래로 걸어가 웅크렸다 뛰어올라 창 위에 선다", () => {
+  const { actor, played, finishMotion } = makeActor();
+  // 대기(0 → 3초), 고르기 0.6(뛰어오르기 구간), 창 고르기 0
+  const behavior = new Behavior(actor, sequence(0, 0.6, 0), { variety: true });
+  const withWindow: Arena = { ...arena, ledges: [ledge(3, 700, 900, 1300)] };
+  behavior.place(400, withWindow);
+  let sawJump = false;
+  for (let t = 0; t < 20 && !(behavior.onLedge && behavior.state !== "fall"); t += 1 / 60) {
+    behavior.update(1 / 60, withWindow);
+    if (behavior.state === "jump") sawJump = true;
+    if (behavior.state === "land") finishMotion();
+  }
+  assert.ok(sawJump, "웅크린다");
+  assert.ok(played.includes("jump") && played.includes("jump_air"), played.join(","));
+  assert.equal(behavior.onLedge, true);
+  assert.equal(behavior.feet.y, 700);
+  assert.ok(behavior.feet.x >= 900 && behavior.feet.x <= 1300, `x=${behavior.feet.x}`);
+});
+
+test("자율: 창 위에서 끝까지 걸어가 뛰어내려 바닥에 선다", () => {
+  const made = makeActor();
+  const behavior = new Behavior(made.actor, sequence(0.9, 0, 0.7, 0), { variety: true });
+  const onWindow: Arena = { ...arena, ledges: [ledge(7, 600, 300, 900)] };
+  behavior.place(500, onWindow);
+  behavior.grab({ x: 500, y: 900 }, 0);
+  behavior.drag({ x: 500, y: 500 }, 16);
+  run2(behavior, 1, onWindow);
+  behavior.release(2000, onWindow);
+  assert.equal(behavior.onLedge, true);
+  for (let t = 0; t < 20 && !(behavior.feet.y === arena.ground && !behavior.airborne); t += 1 / 60) {
+    behavior.update(1 / 60, onWindow);
+    if (behavior.state === "land") made.finishMotion();
+  }
+  assert.equal(behavior.onLedge, false);
+  assert.equal(behavior.feet.y, arena.ground);
+  assert.ok(made.played.includes("jump_air"), made.played.join(","));
+  assert.ok(behavior.feet.x < 300 || behavior.feet.x > 900, `창 밖으로 뛰어내림 x=${behavior.feet.x}`);
+});
+
+test("자율: 화면 밖으로 나갔다가 크게 엿보고, 보통 크기로 걸어 들어온다", () => {
+  const { actor, played, finishMotion } = makeActor();
+  // 놓기 대기 0, 가까운 쪽 0, 두리번 안 함 0.9, 화면 밖 시간 0(6초), 돌아오기 0.5(옆에서 크게), 같은 쪽 0.9, 머무는 시간 0, …
+  const behavior = new Behavior(actor, sequence(0, 0, 0.9, 0, 0.5, 0.9, 0, 0.9, 0.9), { variety: true });
+  behavior.place(300, arena);
+  (behavior as unknown as { leaveScreen(where: Arena): void }).leaveScreen(arena);
+  assert.equal(behavior.state, "walk");
+  const until = (state: string, seconds: number) => {
+    for (let t = 0; t < seconds && behavior.state !== state; t += 1 / 60) behavior.update(1 / 60, arena);
+  };
+  until("away", 15);
+  assert.equal(behavior.state, "away");
+  assert.ok(behavior.feet.x < arena.left, "화면 왼쪽 밖");
+  behavior.consumeTeleport();
+  until("peek", 10);
+  assert.equal(behavior.state, "peek");
+  assert.equal(behavior.displayScale, 2.3);
+  assert.equal(behavior.consumeTeleport(), true, "크기를 바꾸며 순간이동");
+  assert.equal(played.at(-1), "peek_left");
+  // 잡히지 않는다
+  behavior.grab({ x: 10, y: 500 }, 0);
+  assert.equal(behavior.state, "peek");
+  run(behavior, 1);
+  assert.ok(behavior.roll < -0.3, `화면 쪽으로 기운다 roll=${behavior.roll}`);
+  until("away", 8);
+  assert.equal(behavior.state, "away");
+  // 화면 밖에서 잠깐 쉬고 보통 크기로 걸어 들어온다
+  until("walk", 7);
+  assert.equal(behavior.displayScale, 1);
+  for (let t = 0; t < 15 && behavior.state === "walk"; t += 1 / 60) behavior.update(1 / 60, arena);
+  if (behavior.state === "act") finishMotion();
+  assert.equal(behavior.state, "idle");
+  assert.ok(behavior.feet.x > arena.left && behavior.feet.x < arena.right, `x=${behavior.feet.x}`);
+});
+
+test("자율: 엿보다가 눌리면 얼른 숨는다", () => {
+  const { actor } = makeActor();
+  const behavior = new Behavior(actor, sequence(0, 0, 0, 0.5, 0, 0, 0.1, 0.9), { variety: true });
+  behavior.place(300, arena);
+  (behavior as unknown as { startPeek(kind: string, where: Arena): void }).startPeek("up", arena);
+  run(behavior, 1.2);
+  assert.equal(behavior.state, "peek");
+  const shown = behavior.feet.y;
+  assert.ok(shown < arena.ground + 260 * 2.3, "아래에서 올라왔다");
+  behavior.click({ x: behavior.feet.x, y: shown - 500 });
+  run(behavior, 1);
+  assert.notEqual(behavior.state, "peek");
+});
+
+test("자율 모드 20분: 새 행동이 모두 나오고, 한 상태에 오래 갇히지 않으며, 화면 밖에서 늘 돌아온다", () => {
+  // 모션은 1.2초 뒤에 끝난다고 친다 (반복 모션은 끝나지 않음)
+  const loops = new Set(["idle", "walk", "fall", "hang", "jump_air", "sit_edge", "sit_floor", "sleep_edge", "sleep_floor", "peek_left", "peek_right", "peek_up"]);
+  // 콜백 안에서 바꾸는 값은 객체에 담는다 (let이면 TS가 null로 좁혀 버린다)
+  const timer: { pending: { left: number; done: () => void } | null } = { pending: null };
+  const played: string[] = [];
+  const actor: Actor = {
+    heightPx: 260,
+    walkSpeedPx: 100,
+    play(motion, onFinished) {
+      played.push(motion);
+      timer.pending = !loops.has(motion) && onFinished ? { left: 1.2, done: onFinished } : null;
+    },
+  };
+  let seed = 12345;
+  const random = () => {
+    seed = (seed * 1103515245 + 12345) % 2147483648;
+    return seed / 2147483648;
+  };
+  const behavior = new Behavior(actor, random, { variety: true, sleepAfter: Number.POSITIVE_INFINITY });
+  const field: Arena = { ...arena, bottom: arena.ground + 40, ledges: [ledge(5, 650, 800, 1300)] };
+  behavior.place(400, field);
+  const step = 1 / 30;
+  let stay = 0;
+  let longest = 0;
+  let last = behavior.state;
+  const seen = new Set<string>();
+  for (let t = 0; t < 1200; t += step) {
+    behavior.update(step, field);
+    const pending = timer.pending;
+    if (pending) {
+      pending.left -= step;
+      if (pending.left <= 0) {
+        timer.pending = null;
+        pending.done();
+      }
+    }
+    seen.add(behavior.state);
+    stay = behavior.state === last ? stay + step : 0;
+    last = behavior.state;
+    if (behavior.state !== "sit") longest = Math.max(longest, stay);
+  }
+  const counts = (name: string) => played.filter((motion) => motion === name).length;
+  for (const motion of ["jump", "jump_air", "land", "idle_look", "idle_stretch", "sit_down_edge", "sit_down_floor"]) {
+    assert.ok(counts(motion) > 0, `${motion} 안 나옴: ${[...new Set(played)].join(",")}`);
+  }
+  assert.ok(counts("peek_left") + counts("peek_right") > 0, "옆 엿보기");
+  assert.ok(counts("peek_up") > 0, "아래 엿보기");
+  assert.ok(seen.has("away"), "화면 밖에 나갔다");
+  assert.ok(longest < 30, `한 상태에 ${longest.toFixed(1)}초 머묾`);
+  assert.equal(behavior.displayScale === 1 || behavior.state === "peek" || behavior.state === "away", true);
+});
+
+test("자율: 돌아올 때 보통 크기로 끝에서 고개를 내밀어 둘러본 뒤 그쪽에서 걸어 들어온다", () => {
+  const { actor, played } = makeActor();
+  // 화면 밖 → 돌아오기 0.1(고개 내밀기), 반대쪽 0, 둘러보는 시간 0
+  const behavior = new Behavior(actor, sequence(0.1, 0, 0), { variety: true });
+  behavior.place(300, arena);
+  (behavior as unknown as { goAway(side: string, seconds: number): void }).goAway("left", 0.1);
+  run(behavior, 0.2);
+  assert.equal(behavior.state, "peek");
+  assert.equal(behavior.displayScale, 1, "보통 크기");
+  assert.equal(played.at(-1), "peek_right", "나간 반대쪽 끝에서");
+  assert.ok(behavior.feet.x > arena.right, "발은 화면 밖");
+  run(behavior, 1.6);
+  assert.ok(behavior.roll > 0.3, `화면 쪽으로 기울어 고개가 들어온다 roll=${behavior.roll}`);
+  for (let t = 0; t < 8 && behavior.state === "peek"; t += 1 / 60) behavior.update(1 / 60, arena);
+  assert.equal(behavior.state, "walk", "둘러본 뒤 바로 걸어 들어온다");
+  assert.ok(behavior.feet.x > arena.right, "같은 쪽(오른쪽)에서");
+  assert.equal(played.includes("wave"), false, "손은 흔들지 않는다");
+});
+
+test("화면 밖 목표에 닿고 발이 엇갈릴 때까지 기다리는 동안 화면 안으로 끌려오지 않는다", () => {
+  const { actor } = makeActor();
+  // 실제 앱처럼 몇 프레임 뒤에야 멈출 수 있다
+  let frames = 0;
+  actor.canStopWalking = () => ++frames % 20 === 0;
+  const behavior = new Behavior(actor, () => 0.6, { variety: true });
+  behavior.place(800, arena);
+  (behavior as unknown as { leaveScreen(where: Arena): void }).leaveScreen(arena);
+  let maxSeenAfterOut = -Infinity;
+  let wentOut = false;
+  for (let t = 0; t < 20 && behavior.state !== "away"; t += 1 / 60) {
+    behavior.update(1 / 60, arena);
+    if (behavior.feet.x < arena.left) wentOut = true;
+    if (wentOut) maxSeenAfterOut = Math.max(maxSeenAfterOut, behavior.feet.x);
+  }
+  assert.equal(behavior.state, "away");
+  assert.ok(wentOut, "화면 밖으로 나갔다");
+  assert.ok(maxSeenAfterOut < arena.left, `나간 뒤 화면 안으로 돌아오지 않는다 (x 최대 ${maxSeenAfterOut.toFixed(0)})`);
+  assert.ok(behavior.feet.x < arena.left - 200, `화면 밖에서 사라진다 x=${behavior.feet.x.toFixed(0)}`);
 });
