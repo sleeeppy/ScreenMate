@@ -8,16 +8,16 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/sleeeppy/screenmate/releases/latest/download/ScreenMate-macos-universal.dmg"><img src="https://img.shields.io/badge/macOS-%EB%8B%A4%EC%9A%B4%EB%A1%9C%EB%93%9C-3b7cf6?style=for-the-badge&logo=apple&logoColor=white" alt="macOS 다운로드"></a>
-  <a href="https://github.com/sleeeppy/screenmate/releases/latest/download/ScreenMate-windows-setup.exe"><img src="https://img.shields.io/badge/Windows-%EB%8B%A4%EC%9A%B4%EB%A1%9C%EB%93%9C-3b7cf6?style=for-the-badge&logo=windows&logoColor=white" alt="Windows 다운로드"></a>
+  <a href="https://github.com/sleeeppy/screenmate/releases/latest/download/ScreenMate-macos-universal.dmg"><img src="docs/images/download-macos.png" width="333" height="101" alt="macOS용 다운로드 (애플 실리콘 · 인텔)"></a>
+  <a href="https://github.com/sleeeppy/screenmate/releases/latest/download/ScreenMate-windows-setup.exe"><img src="docs/images/download-windows.png" width="333" height="101" alt="Windows용 다운로드 (Windows 10 · 11)"></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/sleeeppy/screenmate/releases/latest"><img src="https://img.shields.io/github/v/release/sleeeppy/screenmate?label=%EC%B5%9C%EC%8B%A0%20%EB%B2%84%EC%A0%84&color=2f6be0&style=flat-square" alt="최신 버전"></a>
-  <img src="https://img.shields.io/badge/macOS%2012%2B%20%C2%B7%20Windows%2010%2B-555?style=flat-square" alt="macOS 12 이상, Windows 10 이상">
-  <a href="https://tauri.app"><img src="https://img.shields.io/badge/Tauri%202-24c8db?style=flat-square&logo=tauri&logoColor=white" alt="Tauri 2"></a>
-  <a href="https://github.com/noname0310/babylon-mmd"><img src="https://img.shields.io/badge/Babylon.js%20%C2%B7%20babylon--mmd-bb464b?style=flat-square&logo=babylondotjs&logoColor=white" alt="Babylon.js · babylon-mmd"></a>
-  <img src="https://img.shields.io/badge/Rust%20%C2%B7%20TypeScript-3a3a44?style=flat-square&logo=rust&logoColor=white" alt="Rust · TypeScript">
+  <a href="https://github.com/sleeeppy/screenmate/releases/latest"><img src="https://img.shields.io/github/v/release/sleeeppy/screenmate?label=%EC%B5%9C%EC%8B%A0%20%EB%B2%84%EC%A0%84&color=2f6be0&style=flat" alt="최신 버전"></a>
+  <img src="https://img.shields.io/badge/macOS%2012%2B%20%C2%B7%20Windows%2010%2B-555?style=flat" alt="macOS 12 이상, Windows 10 이상">
+  <a href="https://tauri.app"><img src="https://img.shields.io/badge/Tauri%202-24c8db?style=flat&logo=tauri&logoColor=white" alt="Tauri 2"></a>
+  <a href="https://github.com/noname0310/babylon-mmd"><img src="https://img.shields.io/badge/Babylon.js%20%C2%B7%20babylon--mmd-bb464b?style=flat&logo=babylondotjs&logoColor=white" alt="Babylon.js · babylon-mmd"></a>
+  <img src="https://img.shields.io/badge/Rust%20%C2%B7%20TypeScript-3a3a44?style=flat&logo=rust&logoColor=white" alt="Rust · TypeScript">
 </p>
 
 <p align="center">
