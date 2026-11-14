@@ -53,6 +53,8 @@ const PIVOT_BLEND = 0.12;
 /** 걸터앉았을 때 캔버스 상자 (키 배수): 발 기준점 아래로 다리가 0.4배쯤 내려간다 */
 // 일어서는 모션 끝에서 선 머리까지 들어가도록 위로도 넉넉하게 (발 위 키 1.25배)
 const SEAT_EDGE_BOX = { widthRatio: 1.35, heightRatio: 1.75, footPadRatio: 0.5 };
+/** 바닥에 앉았을 때 캔버스 상자: 앞으로 뻗은 다리·신발이 발 기준점보다 조금 아래까지 보인다 */
+const SEAT_FLOOR_BOX = { widthRatio: 1.35, heightRatio: 1.6, footPadRatio: 0.3 };
 /** 새 모델을 보여 주기 전에 물리가 자리 잡도록 숨겨 두는 시간 */
 const REVEAL_DELAY_MS = 350;
 /** 업로드할 텍스처의 최대 한 변 길이 */
@@ -556,6 +558,8 @@ export class Stage {
     } else if (this.behavior.seat === "edge") {
       // 걸터앉으면 다리가 테두리 아래로 내려간다. 앉는 동안(0.5초) 선 머리도 잘리지 않게 위아래 모두 넉넉히.
       rect = this.box.update(feet.x, feet.y, this.heightPx, SEAT_EDGE_BOX);
+    } else if (this.behavior.seat === "floor") {
+      rect = this.box.update(feet.x, feet.y, this.heightPx, SEAT_FLOOR_BOX);
     } else {
       rect = this.box.update(feet.x, feet.y, this.heightPx);
     }
