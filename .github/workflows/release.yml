@@ -73,7 +73,11 @@ jobs:
 
       - run: npm ci
 
+      # Tauri는 CI(CI=true)에서 DMG를 꾸미는 Finder AppleScript를 건너뛴다(--skip-jenkins).
+      # 그러면 배경 그림·아이콘 위치 없이 큰 빈 창으로 열린다. 이 변수로 CI에서도 꾸미게 한다.
       - run: npx tauri build --target universal-apple-darwin --bundles dmg
+        env:
+          TAURI_BUNDLER_DMG_IGNORE_CI: "true"
 
       - name: Rename disk image
         run: |
