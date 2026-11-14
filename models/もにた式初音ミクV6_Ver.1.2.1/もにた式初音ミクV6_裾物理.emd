@@ -1,0 +1,20 @@
+[Info]
+Version = 3
+
+[Effect]
+Obj = none
+Obj[1] = fx\BackHair.fx
+Obj[14] = fx\cloth2.fx
+Obj[15] = none
+Obj[16] = fx\cloth2.fx
+Obj[17] = none
+Obj[19] = fx\cloth.fx
+Obj[20] = none
+Obj[24] = fx\cloth2.fx
+Obj[25] = none
+Obj[30] = none
+Obj[33] = fx\cloth2.fx
+Obj[34] = none
+Obj[38] = fx\cloth.fx
+Obj[39] = none
+
