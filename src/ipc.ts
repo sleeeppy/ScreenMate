@@ -22,6 +22,16 @@ export interface StageInfo {
   height: number;
   scale: number;
   workArea: CssRect;
+  /** 왼쪽·오른쪽에 맞닿은 모니터가 있다 (던지면 그쪽으로 넘어간다) */
+  openLeft: boolean;
+  openRight: boolean;
+}
+
+/** 다른 모니터로 옮긴 결과: 새 무대 정보와, 요청한 점의 새 좌표 */
+export interface MonitorTransfer {
+  info: StageInfo;
+  x: number;
+  y: number;
 }
 
 export interface ModelListing {
@@ -64,6 +74,8 @@ export interface Settings {
   sleepMinutes: number;
   /** 가까이 온 커서를 눈과 고개로 따라본다 */
   gaze: boolean;
+  /** 로그인할 때 자동 시작 (운영체제 설정을 비춘 값) */
+  autostart: boolean;
 }
 
 /** 캐릭터 지금 상태 (메인 창 → 설정 창 아래 막대) */
@@ -89,6 +101,10 @@ export const onModelsChanged = (handler: () => void): Promise<UnlistenFn> =>
 export const onReload = (handler: () => void): Promise<UnlistenFn> => listen("reload", () => handler());
 
 export const stageInfo = (): Promise<StageInfo> => invoke("stage_info");
+
+/** 창 밖 한 점(지금 창 기준 CSS px)이 다른 모니터 위면 오버레이를 그 모니터로 옮긴다. 아니면 null. */
+export const transferMonitor = (x: number, y: number): Promise<MonitorTransfer | null> =>
+  invoke("transfer_monitor", { x, y });
 
 /** 보이는 최상위 창 목록 (앞 → 뒤). 바뀔 때만 온다. */
 export const onWindows = (handler: (windows: WindowRect[]) => void): Promise<UnlistenFn> =>
@@ -129,6 +145,34 @@ export const setInterestRect = (rect: CssRect | null): Promise<void> =>
   invoke("set_interest_rect", { rect });
 
 export const listModels = (): Promise<ModelListing[]> => invoke("list_models");
+
+/** 설정 창에서 만든 폴더 */
+export interface LibraryFolder {
+  id: string;
+  name: string;
+  /** 상위 폴더 (null이면 맨 위) */
+  parent: string | null;
+}
+
+/** 모델 보관함 정리 (models/library.json) */
+export interface Library {
+  /** 처음 정리를 마쳤는지 */
+  organized: boolean;
+  /** 폴더 (보이는 순서) */
+  folders: LibraryFolder[];
+  /** 모델 id → 폴더 id (null이면 폴더 밖). 키가 없으면 새로 들어온 모델 */
+  placement: Record<string, string | null>;
+  /** 모델 id → 바꾼 이름 */
+  titles: Record<string, string>;
+}
+
+export const getLibrary = (): Promise<Library> => invoke("get_library");
+export const saveLibrary = (library: Library): Promise<Library> => invoke("save_library", { library });
+export const onLibraryChanged = (handler: (library: Library) => void): Promise<UnlistenFn> =>
+  listen<Library>("library-changed", (event) => handler(event.payload));
+
+/** 모델을 지운다 (가져온 사본·캐시·썸네일). 지운 개수를 돌려준다 */
+export const deleteModels = (ids: string[]): Promise<number> => invoke("delete_models", { ids });
 
 export const getSettings = (): Promise<Settings> => invoke("get_settings");
 

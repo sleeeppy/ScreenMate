@@ -1,4 +1,6 @@
 import { LoadAssetContainerAsync } from "@babylonjs/core/Loading/sceneLoader";
+import type { AssetContainer } from "@babylonjs/core/assetContainer";
+import type { Material } from "@babylonjs/core/Materials/material";
 import { BaseTexture } from "@babylonjs/core/Materials/Textures/baseTexture";
 import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
@@ -22,6 +24,8 @@ import { MotionDriver, type DriverInputs } from "../motion/driver";
 import { createProceduralSlot } from "../motion/proceduralSlot";
 import { calibrate, type Calibration } from "./calibration";
 import { resolveMorphs, type ResolvedMorphs } from "./morphMap";
+import { skirtArmMasks } from "./physicsBones.ts";
+import { PhysicsSmoother, physicsBoneAnchors } from "./physicsSmoothing";
 import { presetOverrides } from "./presets";
 import { applyOverrides, readOverrides } from "./profile";
 
@@ -100,7 +104,7 @@ export async function loadCharacter(
   // babylon-mmd는 스켈레톤을 루트가 아니라 자식 메시와 메타데이터에 붙인다.
   const skeleton = (mesh.metadata as MmdModelMetadata | null)?.skeleton ?? container.skeletons[0] ?? null;
   if (!skeleton) {
-    container.dispose();
+    disposeContainer(container, scene);
     throw new Error(`${entry.name}: 스켈레톤이 없습니다`);
   }
   // createMmdModel이 메타데이터를 정리하기 전에 모프 이름을 읽어 둔다.
@@ -119,9 +123,31 @@ export async function loadCharacter(
 
   place(mesh, calibration);
   mesh.computeWorldMatrix(true);
+  // 물리 뼈 떨림 거르기: 어떤 뼈를 어느 뼈 기준으로 거를지는 메타데이터가 정리되기 전에 정한다
+  const buildPhysics = overrides.physics ?? true;
+  const metadata = mesh.metadata as MmdModelMetadata | null;
+  const anchors =
+    buildPhysics && metadata ? physicsBoneAnchors(metadata.bones, metadata.rigidBodies) : new Map<number, number>();
+  // 걸을 때 흔드는 팔이 치마를 쳐서 튀어 오르지 않게: 치마(下半身 아래 물리 강체)는 팔 충돌 그룹과 부딪히지 않는다
+  if (buildPhysics && metadata) {
+    const masks = skirtArmMasks(metadata.bones, metadata.rigidBodies);
+    if (masks.size) {
+      (metadata as { rigidBodies: MmdModelMetadata["rigidBodies"] }).rigidBodies = metadata.rigidBodies.map((body, index) =>
+        masks.has(index) ? { ...body, collisionMask: masks.get(index)! } : body,
+      );
+    }
+  }
   const model = world.runtime.createMmdModel(mesh, {
     materialProxyConstructor: MmdStandardMaterialProxy,
-    buildPhysics: overrides.physics ?? true,
+    buildPhysics,
+  });
+  const smoother = new PhysicsSmoother(model.runtimeBones, anchors);
+  let lastSmoothed = 0;
+  const smoothing = scene.onBeforeRenderObservable.add(() => {
+    const now = performance.now();
+    const dt = lastSmoothed > 0 ? (now - lastSmoothed) / 1000 : 0;
+    lastSmoothed = now;
+    smoother.apply(dt);
   });
   let driver: MotionDriver | null = null;
   const slot = createProceduralSlot((runtimeModel) => {
@@ -130,7 +156,7 @@ export async function loadCharacter(
   });
   model.setRuntimeAnimation(model.createRuntimeAnimation(slot));
   if (!driver) {
-    container.dispose();
+    disposeContainer(container, scene);
     throw new Error(`${entry.name}: 모션 드라이버를 만들지 못했습니다`);
   }
 
@@ -152,7 +178,10 @@ export async function loadCharacter(
     morphNames,
     loadMs: Math.round(performance.now() - started),
     motion: driver,
-    resetPhysics: () => model.initializePhysics(),
+    resetPhysics: () => {
+      model.initializePhysics();
+      smoother.reset();
+    },
     ready: whenReady(container.textures, container.meshes),
     setVisible: (visible) => {
       for (const part of container.meshes) part.isVisible = visible;
@@ -161,10 +190,33 @@ export async function loadCharacter(
       for (const { material, base } of outlines) material.outlineWidth = base * scale * edgeScale;
     },
     dispose: () => {
+      scene.onBeforeRenderObservable.remove(smoothing);
       world.runtime.destroyMmdModel(model);
-      container.dispose();
+      disposeContainer(container, scene);
     },
   };
+}
+
+/**
+ * 모델을 지운다. 다른 모델이 같이 쓰는 텍스처는 남긴다.
+ *
+ * babylon-mmd 재질 빌더는 텍스처를 파일 경로로 캐시해서 같은 텍스처 객체를 여러 모델에 나눠 준다
+ * (Sour 렌 Black과 White는 몸·머리카락·얼굴 텍스처가 같다). 그런데 텍스처는 처음 읽은 모델의 컨테이너에만 들어 있어서
+ * container.dispose()가 그 텍스처를 지우면, 새로 불러온 모델의 재질은 지워진 텍스처를 들고 있어 그 부분이 통째로 안 그려졌다
+ * (Black → White로 바꾸면 White 전용인 옷만 보임). 이 모델 재질이 쓰는 텍스처 중 장면의 다른 재질이 안 쓰는 것만 지운다.
+ */
+function disposeContainer(container: AssetContainer, scene: Scene): void {
+  const own = new Set<Material>(container.materials);
+  const mine = new Set<BaseTexture>(container.textures);
+  for (const material of container.materials) for (const texture of material.getActiveTextures()) mine.add(texture);
+  const shared = new Set<BaseTexture>();
+  for (const material of scene.materials) {
+    if (own.has(material)) continue;
+    for (const texture of material.getActiveTextures()) shared.add(texture);
+  }
+  container.textures = [];
+  container.dispose();
+  for (const texture of mine) if (!shared.has(texture)) texture.dispose();
 }
 
 /** 텍스처를 모두 읽고, 메시마다 재질 셰이더를 미리 컴파일한다 (실패해도 너무 오래 숨기지 않게 2초 상한). */

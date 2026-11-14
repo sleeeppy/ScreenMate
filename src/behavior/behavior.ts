@@ -36,6 +36,9 @@ export interface Arena {
   top: number;
   /** 창 위쪽 테두리 발판 */
   ledges?: readonly Ledge[];
+  /** 이쪽에 맞닿은 모니터가 있어 날아가면 벽에 튕기지 않고 넘어간다 (넘어가는 처리는 무대가 한다) */
+  openLeft?: boolean;
+  openRight?: boolean;
 }
 
 export interface Actor {
@@ -240,6 +243,21 @@ export class Behavior {
     const margin = this.margin();
     this.feet.x = clamp(this.feet.x, arena.left + margin, arena.right - margin);
     if (!this.airborne && this.ledgeId === null) this.feet.y = arena.ground;
+  }
+
+  /** 다른 모니터로 옮겨 좌표 원점이 바뀌었을 때: 화면 좌표로 들고 있는 값을 모두 같은 만큼 옮긴다 */
+  translate(dx: number, dy: number): void {
+    const shift = (point: Point) => {
+      point.x += dx;
+      point.y += dy;
+    };
+    shift(this.feet);
+    shift(this.pointer);
+    shift(this.held);
+    shift(this.ledgeAnchor);
+    shift(this.ledgeShown);
+    shift(this.ledgeEstimate);
+    for (const sample of this.samples) shift(sample);
   }
 
   /** 공중 한 점에서 떨어뜨린다 (검증용 `--drop-on-window`) */
@@ -524,7 +542,10 @@ export class Behavior {
     this.roll = damp(this.roll, 0, 0.18, dt);
 
     const margin = this.margin();
-    if (this.feet.x < arena.left + margin || this.feet.x > arena.right - margin) {
+    // 옆 모니터가 있는 쪽으로 날아가면 튕기지 않는다 (무대가 화면 끝을 넘을 때 그 모니터로 옮긴다)
+    const pastLeft = this.feet.x < arena.left + margin && !(arena.openLeft && this.velocity.x < 0);
+    const pastRight = this.feet.x > arena.right - margin && !(arena.openRight && this.velocity.x > 0);
+    if (pastLeft || pastRight) {
       this.feet.x = clamp(this.feet.x, arena.left + margin, arena.right - margin);
       this.velocity.x = -this.velocity.x * WALL_BOUNCE;
     }

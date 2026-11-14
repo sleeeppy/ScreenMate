@@ -8,6 +8,7 @@ import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Scene } from "@babylonjs/core/scene";
 import { SdefInjector } from "babylon-mmd/esm/Loader/sdefInjector";
 import {
+  transferMonitor,
   diag,
   onCursor,
   onWindows,
@@ -94,6 +95,11 @@ export class Stage {
   /** 전체화면 앱이 떠 있어 숨김. 사라지는 동안만 그리고 그 뒤로는 행동·물리·그리기를 멈춘다 */
   private hidden = false;
   private hiddenSince = 0;
+  /** 숨어서 그리기 루프를 세워 둠 / 다시 돌리기 */
+  private loopParked = false;
+  private resumeLoop: () => void = () => {};
+  /** 다른 모니터로 옮기는 중 (한 번에 하나만) */
+  private transferring = false;
   /** 성능 측정용: 커서를 무시하고 대기 fps로 고정 (`--bench-idle`) */
   benchIdle = false;
   /** 검증용: 발판이 잡히면 가장 넓은 창 위에서 한 번 떨어뜨린다 (`--drop-on-window`) */
@@ -162,7 +168,11 @@ export class Stage {
       grab: (point, now) => {
         if (this.character) this.behavior.grab(point, now);
       },
-      drag: (point, now) => this.behavior.drag(point, now),
+      drag: (point, now) => {
+        this.behavior.drag(point, now);
+        // 커서가 이 모니터 밖으로 나가면 그 모니터로 데려간다
+        if (this.outsideWindow(point)) void this.transfer(point);
+      },
       release: (now) => this.behavior.release(now, this.arena()),
       click: (point) => {
         if (this.character) this.behavior.click(point);
@@ -305,7 +315,6 @@ export class Stage {
     this.notifyStatus();
   }
 
-  /** 설정 창의 설정을 적용한다 (크기, 다양한 동작, 창 위에 올라가기, 졸기까지 시간) */
   /** 전체화면 앱이 뜨면 숨긴다 (서서히 사라진 뒤 멈춤). 돌아오면 멈췄던 자리에서 이어서 움직인다. */
   setHidden(hidden: boolean): void {
     if (hidden === this.hidden) return;
@@ -316,10 +325,13 @@ export class Stage {
       this.cursor = null;
       // 숨어 있는 동안 클릭은 모두 아래 창으로
       this.hit.release();
+    } else {
+      this.resumeLoop();
     }
     diag(`fullscreen ${hidden ? "hide" : "show"}`);
   }
 
+  /** 설정 창의 설정을 적용한다 (크기, 다양한 동작, 창 위에 올라가기, 졸기까지 시간) */
   applySettings(settings: Settings): void {
     this.setHeight(settings.heightPx);
     this.behavior.configure({
@@ -365,7 +377,41 @@ export class Stage {
 
   private baseArena(): Arena {
     const area = this.info.workArea;
-    return { ground: area.y + area.height, left: area.x, right: area.x + area.width, top: area.y };
+    return {
+      ground: area.y + area.height,
+      left: area.x,
+      right: area.x + area.width,
+      top: area.y,
+      openLeft: this.info.openLeft,
+      openRight: this.info.openRight,
+    };
+  }
+
+  private outsideWindow(point: { x: number; y: number }): boolean {
+    return point.x < 0 || point.y < 0 || point.x >= this.info.width || point.y >= this.info.height;
+  }
+
+  /**
+   * 창 밖 한 점이 다른 모니터 위면 오버레이를 그 모니터로 옮기고, 캐릭터 좌표를 새 창 기준으로 바꾼다.
+   * 옮길 모니터가 없으면 그쪽을 닫아 다음 프레임부터 벽에 튕기게 한다.
+   */
+  private async transfer(point: { x: number; y: number }): Promise<void> {
+    if (this.transferring) return;
+    this.transferring = true;
+    try {
+      const moved = await transferMonitor(point.x, point.y);
+      if (!moved) {
+        this.info = { ...this.info, openLeft: this.info.openLeft && point.x >= 0, openRight: this.info.openRight && point.x < this.info.width };
+        return;
+      }
+      this.behavior.translate(moved.x - point.x, moved.y - point.y);
+      this.updateInfo(moved.info);
+      diag(`monitor moved to ${moved.info.width}x${moved.info.height}@${moved.info.scale}`);
+    } catch (error) {
+      diag(`monitor transfer failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      this.transferring = false;
+    }
   }
 
   /** 창 목록·화면·캐릭터 키가 바뀌면 발판을 다시 계산한다. */
@@ -526,7 +572,8 @@ export class Stage {
     let renderMs = 0;
     let stamp = performance.now();
     const loop = (now: number) => {
-      requestAnimationFrame(loop);
+      // 숨어서 쉬는 중이면 다음 프레임을 예약하지 않는다 (setHidden(false)가 다시 시작)
+      if (!(this.hidden && now - this.hiddenSince > HIDE_FADE_MS)) requestAnimationFrame(loop);
       const own = this.behavior.activity();
       const activity: Activity =
         this.hit.capturing || now < this.activeUntil || own === "interact"
@@ -535,8 +582,10 @@ export class Stage {
             ? "near"
             : "idle";
       // 숨김: 사라지는 동안(HIDE_FADE_MS)만 그리고 멈춘다. 다시 보일 때 멈춘 시간만큼 건너뛰지 않게 lastFrame을 비운다.
+      // 매 vsync 콜백도 쉬게 하고(GPU 프로세스가 깨어나지 않게) 다시 보일 때 setHidden이 루프를 깨운다.
       if (this.hidden && now - this.hiddenSince > HIDE_FADE_MS) {
         this.lastFrame = 0;
+        this.loopParked = true;
         return;
       }
       // 캐릭터가 없으면 그릴 것도 없다 (vsync 간격 측정만 계속)
@@ -548,6 +597,11 @@ export class Stage {
       this.lastFrame = now;
       if (this.demoHang) this.driveDemoHang(now);
       this.behavior.update(dt, this.arena());
+      // 옆 모니터 쪽으로 날아가 화면 끝을 넘으면 그 모니터로 (몸 가운데 높이, 화면 안으로 맞춘 점)
+      if (this.behavior.airborne && this.behavior.state !== "held" && this.outsideWindow({ x: this.behavior.feet.x, y: 0 })) {
+        const y = Math.min(Math.max(this.behavior.feet.y - this.heightPx / 2, 0), this.info.height - 1);
+        void this.transfer({ x: this.behavior.feet.x, y });
+      }
       this.blendPivot(dt);
       this.syncPlatformRate();
       this.syncCharacter();
@@ -568,6 +622,11 @@ export class Stage {
         renderMs = 0;
         stamp = now;
       }
+    };
+    this.resumeLoop = () => {
+      if (!this.loopParked) return;
+      this.loopParked = false;
+      requestAnimationFrame(loop);
     };
     requestAnimationFrame(loop);
   }

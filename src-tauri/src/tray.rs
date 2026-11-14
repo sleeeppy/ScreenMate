@@ -60,9 +60,41 @@ pub fn refresh(app: &AppHandle) {
     }
 }
 
+/// 폴더 하나를 하위 메뉴로 (안에 모델이 하나도 없으면 None). 너무 깊으면 그만 내려간다.
+fn folder_menu(
+    app: &AppHandle,
+    library: &crate::library::Library,
+    models: &[ModelEntry],
+    folder: &crate::library::Folder,
+    check: &dyn Fn(&ModelEntry) -> tauri::Result<tauri::menu::CheckMenuItem<Wry>>,
+    depth: usize,
+) -> tauri::Result<Option<tauri::menu::Submenu<Wry>>> {
+    if depth > 8 {
+        return Ok(None);
+    }
+    let mut submenu = SubmenuBuilder::new(app, &folder.name);
+    let mut empty = true;
+    for child in library.folders.iter().filter(|child| child.parent.as_deref() == Some(folder.id.as_str())) {
+        if let Some(inner) = folder_menu(app, library, models, child, check, depth + 1)? {
+            submenu = submenu.item(&inner);
+            empty = false;
+        }
+    }
+    for entry in models.iter().filter(|entry| library.placement.get(&entry.id) == Some(&Some(folder.id.clone()))) {
+        submenu = submenu.item(&check(entry)?);
+        empty = false;
+    }
+    if empty {
+        return Ok(None);
+    }
+    Ok(Some(submenu.build()?))
+}
+
 fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
     let settings = app.state::<SettingsState>().0.lock().unwrap().clone();
     let models = models::load_registry(app);
+    let mut library = crate::library::load(app);
+    library.prune(&models);
 
     let mut menu = MenuBuilder::new(app)
         .item(&MenuItemBuilder::with_id("settings", "설정…").accelerator("CmdOrCtrl+,").build(app)?)
@@ -71,25 +103,48 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         menu = menu.item(&MenuItemBuilder::with_id("none", "가져온 모델 없음").enabled(false).build(app)?);
     }
 
-    let mut groups: BTreeMap<String, Vec<&ModelEntry>> = BTreeMap::new();
-    for entry in &models {
-        groups.entry(entry.group.clone()).or_default().push(entry);
-    }
-    for (group, entries) in &groups {
-        let check = |entry: &ModelEntry| {
-            CheckMenuItemBuilder::with_id(format!("model:{}", entry.id), &entry.name)
-                .checked(settings.model_id.as_deref() == Some(entry.id.as_str()))
-                .build(app)
-        };
-        if entries.len() == 1 {
-            menu = menu.item(&check(entries[0])?);
-        } else {
-            let mut submenu = SubmenuBuilder::new(app, group);
-            for entry in entries {
-                submenu = submenu.item(&check(entry)?);
+    // 설정 창에서 정리한 대로: 폴더는 하위 메뉴, 폴더 밖 모델은 바로. 이름은 바꾼 이름.
+    // 아직 정리 전이면(설정 창을 한 번도 안 염) 가져온 폴더 이름으로 묶는다.
+    let check = |entry: &ModelEntry| {
+        CheckMenuItemBuilder::with_id(format!("model:{}", entry.id), library.title_of(entry))
+            .checked(settings.model_id.as_deref() == Some(entry.id.as_str()))
+            .build(app)
+    };
+    let mut groups: Vec<(String, Vec<&ModelEntry>)> = Vec::new();
+    let mut loose: Vec<&ModelEntry> = Vec::new();
+    if library.organized {
+        // 폴더 안 폴더는 하위 메뉴 안의 하위 메뉴
+        for folder in library.folders.iter().filter(|folder| folder.parent.is_none()) {
+            if let Some(submenu) = folder_menu(app, &library, &models, folder, &check, 0)? {
+                menu = menu.item(&submenu);
             }
-            menu = menu.item(&submenu.build()?);
         }
+        loose = models
+            .iter()
+            .filter(|entry| !matches!(library.placement.get(&entry.id), Some(Some(_))))
+            .collect();
+    } else {
+        let mut by_group: BTreeMap<String, Vec<&ModelEntry>> = BTreeMap::new();
+        for entry in &models {
+            by_group.entry(entry.group.clone()).or_default().push(entry);
+        }
+        for (group, entries) in by_group {
+            if entries.len() == 1 {
+                loose.push(entries[0]);
+            } else {
+                groups.push((group, entries));
+            }
+        }
+    }
+    for (name, entries) in &groups {
+        let mut submenu = SubmenuBuilder::new(app, name);
+        for entry in entries {
+            submenu = submenu.item(&check(entry)?);
+        }
+        menu = menu.item(&submenu.build()?);
+    }
+    for entry in loose {
+        menu = menu.item(&check(entry)?);
     }
 
     let mut size = SubmenuBuilder::new(app, "크기");

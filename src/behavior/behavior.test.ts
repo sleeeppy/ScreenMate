@@ -439,3 +439,52 @@ test("창이 일정하게 움직이면 매 프레임 고르게 따라간다 (창
 function close2(actual: number, expected: number, epsilon: number): void {
   assert.ok(Math.abs(actual - expected) < epsilon, `${actual} ≈ ${expected}`);
 }
+
+/** 오른쪽으로 세게 던진다 (발 x=1800 근처, 오른쪽 위로) */
+function throwRight(behavior: Behavior, field: Arena): void {
+  behavior.place(1800, field);
+  behavior.grab({ x: 1800, y: 800 }, 0);
+  for (let i = 1; i <= 6; i++) {
+    behavior.drag({ x: 1800 + i * 30, y: 800 - i * 10 }, i * 16);
+    behavior.update(1 / 60, field);
+  }
+  behavior.release(6 * 16 + 5, field);
+}
+
+test("옆 모니터가 없는 쪽으로 던지면 화면 끝에서 튕긴다", () => {
+  const behavior = new Behavior(makeActor().actor, sequence(0.9));
+  throwRight(behavior, arena);
+  let maxX = behavior.feet.x;
+  for (let i = 0; i < 600 && behavior.state === "fall"; i++) {
+    behavior.update(1 / 60, arena);
+    maxX = Math.max(maxX, behavior.feet.x);
+  }
+  assert.ok(maxX <= arena.right, `x=${maxX}`);
+});
+
+test("옆 모니터가 있는 쪽으로 던지면 화면 끝을 넘어 날아간다", () => {
+  const open: Arena = { ...arena, openRight: true };
+  const behavior = new Behavior(makeActor().actor, sequence(0.9));
+  throwRight(behavior, open);
+  let maxX = behavior.feet.x;
+  for (let i = 0; i < 120 && behavior.state === "fall"; i++) {
+    behavior.update(1 / 60, open);
+    maxX = Math.max(maxX, behavior.feet.x);
+  }
+  assert.ok(maxX > arena.right, `x=${maxX}`);
+});
+
+test("모니터를 옮기면 들고 있던 좌표가 같은 만큼 옮겨지고 계속 끌린다", () => {
+  const behavior = new Behavior(makeActor().actor, sequence(0.9));
+  behavior.place(500, arena);
+  behavior.grab({ x: 500, y: 800 }, 0);
+  behavior.drag({ x: 520, y: 790 }, 16);
+  run(behavior, 0.5);
+  const before = { ...behavior.feet };
+  behavior.translate(-1920, 40);
+  assert.deepEqual(behavior.feet, { x: before.x - 1920, y: before.y + 40 });
+  // 새 좌표계에서 같은 곳을 계속 끌면 순간이동 없이 그 자리에 있다
+  behavior.drag({ x: 520 - 1920, y: 830 }, 32);
+  for (let i = 0; i < 30; i++) behavior.update(1 / 60, { ...arena, left: -4000 });
+  assert.ok(Math.abs(behavior.feet.x - (before.x - 1920)) < 30, `x=${behavior.feet.x}`);
+});
