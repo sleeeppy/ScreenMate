@@ -11,13 +11,15 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::overlay::OverlayState;
 
 const SLOW_INTERVAL: Duration = Duration::from_millis(150);
+/// 모니터 연결·해상도 변경 확인 간격
+const MONITOR_CHECK: Duration = Duration::from_secs(2);
 const FAST_INTERVAL: Duration = Duration::from_millis(8);
 /// 이보다 작은 창(CSS px)은 발판으로 쓰지 않는다 (툴팁, 작은 팝업)
 const MIN_SIZE: f64 = 80.0;
@@ -80,9 +82,15 @@ fn poll(app: AppHandle, state: Arc<PlatformState>) {
     let mut last: Option<Vec<WindowRect>> = None;
     // 판정이 바뀐 뒤 같은 값이 연속으로 나온 횟수
     let mut settle = 0u32;
+    let mut monitor_checked = Instant::now();
     loop {
         let fast = state.fast.load(Ordering::Relaxed);
         thread::sleep(if fast { FAST_INTERVAL } else { SLOW_INTERVAL });
+
+        if monitor_checked.elapsed() >= MONITOR_CHECK {
+            monitor_checked = Instant::now();
+            crate::overlay::check_monitor(&app);
+        }
 
         let overlay = app.state::<Arc<OverlayState>>();
         let (origin_x, origin_y, scale) = overlay.origin();
@@ -187,6 +195,12 @@ fn to_css(window: NativeWindow, origin_x: i32, origin_y: i32, scale: f64) -> Win
 #[tauri::command]
 pub fn set_platform_rate(state: tauri::State<'_, Arc<PlatformState>>, fast: bool) {
     state.fast.store(fast, Ordering::Relaxed);
+}
+
+/// 전체화면이라 캐릭터가 숨어 있는지 (커서 폴링을 쉬게 한다)
+pub fn is_fullscreen(app: &AppHandle) -> bool {
+    app.try_state::<Arc<PlatformState>>()
+        .is_some_and(|state| state.fullscreen.load(Ordering::Relaxed))
 }
 
 /// 지금 전체화면인지 (웹뷰가 새로 시작할 때 한 번 묻는다. 그 뒤로는 `fullscreen` 이벤트)

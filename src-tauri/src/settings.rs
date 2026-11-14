@@ -4,6 +4,7 @@ use std::fs;
 use std::sync::Mutex;
 
 use tauri::{AppHandle, Emitter, Manager, Runtime};
+use tauri_plugin_autostart::ManagerExt;
 
 use crate::models::data_root;
 
@@ -21,11 +22,25 @@ pub struct Settings {
     pub sleep_minutes: u32,
     /// 가까이 온 커서를 눈과 고개로 따라본다
     pub gaze: bool,
+    /// 캐릭터가 마지막에 있던 모니터 (다음에 켤 때 거기서 시작)
+    pub monitor: Option<crate::monitors::MonitorRef>,
+    /// 로그인할 때 자동 시작. 실제 값은 운영체제(Windows 레지스트리 Run, macOS LaunchAgent)에 있고 여기엔 비춰 둔다.
+    #[serde(skip_deserializing)]
+    pub autostart: bool,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { model_id: None, height_px: 260.0, variety: true, ledges: true, sleep_minutes: 10, gaze: true }
+        Self {
+            model_id: None,
+            height_px: 260.0,
+            variety: true,
+            ledges: true,
+            sleep_minutes: 10,
+            gaze: true,
+            monitor: None,
+            autostart: false,
+        }
     }
 }
 
@@ -38,16 +53,28 @@ pub struct SettingsPatch {
     pub ledges: Option<bool>,
     pub sleep_minutes: Option<u32>,
     pub gaze: Option<bool>,
+    pub autostart: Option<bool>,
 }
 
 pub struct SettingsState(pub Mutex<Settings>);
 
+/// 설정 파일을 읽는다. 자동 시작은 운영체제에서 읽는다.
+///
+/// 설정 파일이 아직 없으면(처음 켬) 설치한 앱에서는 자동 시작을 켠다. 개발 빌드는 빌드 폴더 실행 파일이
+/// 로그인 항목에 남으므로 켜지 않는다.
 pub fn load<R: Runtime>(app: &AppHandle<R>) -> Settings {
-    data_root(app)
-        .ok()
-        .and_then(|root| fs::read(root.join("settings.json")).ok())
+    let file = data_root(app).ok().map(|root| root.join("settings.json"));
+    let first_run = file.as_ref().is_some_and(|file| !file.exists());
+    let mut settings: Settings = file
+        .and_then(|file| fs::read(file).ok())
         .and_then(|bytes| serde_json::from_slice(&bytes).ok())
-        .unwrap_or_default()
+        .unwrap_or_default();
+    if first_run && !cfg!(debug_assertions) {
+        let _ = app.autolaunch().enable();
+        let _ = save(app, &settings);
+    }
+    settings.autostart = app.autolaunch().is_enabled().unwrap_or(false);
+    settings
 }
 
 fn save<R: Runtime>(app: &AppHandle<R>, settings: &Settings) -> Result<(), String> {
@@ -90,6 +117,14 @@ pub fn update_settings(app: AppHandle, patch: SettingsPatch) -> Result<Settings,
         }
         if let Some(gaze) = patch.gaze {
             settings.gaze = gaze;
+        }
+        if let Some(enabled) = patch.autostart {
+            let launcher = app.autolaunch();
+            let result = if enabled { launcher.enable() } else { launcher.disable() };
+            if let Err(error) = result {
+                eprintln!("autostart {enabled} failed: {error}");
+            }
+            settings.autostart = launcher.is_enabled().unwrap_or(false);
         }
     })?;
     crate::tray::refresh(&app);

@@ -1,4 +1,4 @@
-//! 투명 오버레이 창: 창 스타일, 클릭 통과, 커서 폴링.
+//! 투명 오버레이 창: 창 스타일, 클릭 통과, 커서 폴링, 모니터 옮기기.
 //!
 //! 성능 메모
 //! - 창 위치·크기·배율은 창 이벤트가 올 때만 갱신해서 캐시한다. 폴링 스레드에서
@@ -10,9 +10,17 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
-use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewWindow, WindowEvent};
+use tauri::{AppHandle, Emitter, Manager, WebviewWindow, WindowEvent};
 
-const POLL_INTERVAL: Duration = Duration::from_millis(8);
+use crate::monitors::{self, Screen};
+use crate::settings::SettingsState;
+
+/// 커서가 캐릭터 근처에 있을 때 (눈·고개가 커서를 매끄럽게 따라가야 함)
+const POLL_NEAR: Duration = Duration::from_millis(8);
+/// 멀리 있을 때는 근처로 들어오는지만 보면 된다
+const POLL_FAR: Duration = Duration::from_millis(33);
+/// 전체화면이라 캐릭터가 숨어 있을 때
+const POLL_HIDDEN: Duration = Duration::from_millis(250);
 
 #[derive(Clone, Copy, Default)]
 struct Geometry {
@@ -42,7 +50,8 @@ impl CssRect {
 pub struct OverlayState {
     geometry: Mutex<Geometry>,
     interest: Mutex<Option<CssRect>>,
-    /// 오버레이를 띄운 모니터 전체 (작업 영역 아님). 물리 px 왼쪽 위·크기와 배율
+    /// 오버레이를 띄운 모니터 전체 (작업 영역 아님). 물리 px 왼쪽 위·크기와 배율.
+    /// 웹뷰가 거의 동시에 여러 번 옮겨 달라고 해도 한 번에 하나씩 처리하도록 이 잠금 안에서 옮긴다.
     monitor: Mutex<Option<(i32, i32, u32, u32, f64)>>,
 }
 
@@ -73,13 +82,30 @@ pub struct StageInfo {
     height: f64,
     scale: f64,
     work_area: CssRect,
+    /// 왼쪽·오른쪽에 맞닿은 모니터가 있다 (던지면 그쪽 모니터로 넘어간다)
+    open_left: bool,
+    open_right: bool,
+}
+
+/// 다른 모니터로 옮긴 결과: 새 무대 정보와, 요청한 점을 새 창 기준으로 바꾼 좌표
+#[derive(serde::Serialize)]
+pub struct Transfer {
+    info: StageInfo,
+    x: f64,
+    y: f64,
 }
 
 pub fn install(app: &AppHandle, window: &WebviewWindow) -> tauri::Result<()> {
     let state = Arc::new(OverlayState::default());
     app.manage(state.clone());
 
-    *state.monitor.lock().unwrap() = fit_primary_monitor(window)?;
+    // 마지막에 있던 모니터에서 시작한다 (없으면 주 모니터)
+    let screens = monitors::screens(app);
+    let wanted = app.state::<SettingsState>().0.lock().unwrap().monitor.clone();
+    if let Some(screen) = monitors::remembered(&screens, wanted.as_ref()).map(|index| &screens[index]) {
+        monitors::fit_window(window, screen)?;
+        *state.monitor.lock().unwrap() = Some(monitors::screen_key(screen));
+    }
     window.set_ignore_cursor_events(true)?;
     reapply_window_chrome(window);
     refresh_geometry(window, &state);
@@ -119,16 +145,94 @@ fn refresh_geometry(window: &WebviewWindow, state: &OverlayState) {
     };
 }
 
-/// 주 모니터를 덮게 놓고, 그 모니터 사각형(물리 px)과 배율을 돌려준다.
-fn fit_primary_monitor(window: &WebviewWindow) -> tauri::Result<Option<(i32, i32, u32, u32, f64)>> {
-    let Some(monitor) = window.primary_monitor()? else {
+/// 오버레이 기준 CSS px 한 점 → 데스크톱 좌표 (Windows 물리 px, macOS 포인트)
+fn css_to_desktop(geometry: &Geometry, x: f64, y: f64) -> (f64, f64) {
+    if cfg!(target_os = "macos") {
+        (geometry.x as f64 / geometry.scale + x, geometry.y as f64 / geometry.scale + y)
+    } else {
+        (geometry.x as f64 + x * geometry.scale, geometry.y as f64 + y * geometry.scale)
+    }
+}
+
+fn desktop_to_css(geometry: &Geometry, x: f64, y: f64) -> (f64, f64) {
+    if cfg!(target_os = "macos") {
+        (x - geometry.x as f64 / geometry.scale, y - geometry.y as f64 / geometry.scale)
+    } else {
+        ((x - geometry.x as f64) / geometry.scale, (y - geometry.y as f64) / geometry.scale)
+    }
+}
+
+/// 오버레이를 다른 모니터로 옮긴다. 상태(모니터·창 위치)를 갱신하고 설정에 기억한다.
+fn move_to(app: &AppHandle, window: &WebviewWindow, state: &OverlayState, screen: &Screen) -> tauri::Result<()> {
+    monitors::fit_window(window, screen)?;
+    *state.monitor.lock().unwrap() = Some(monitors::screen_key(screen));
+    refresh_geometry(window, state);
+    if cfg!(not(target_os = "macos")) {
+        // Windows: DPI 변경 처리 전에 읽은 배율일 수 있어 옮긴 모니터의 배율로 맞춘다
+        state.geometry.lock().unwrap().scale = screen.scale;
+    }
+    let remembered = monitors::reference(screen);
+    let _ = crate::settings::update(app, |settings| settings.monitor = Some(remembered));
+    Ok(())
+}
+
+/// 캐릭터를 끌거나 던져서 창 밖(CSS px, 지금 오버레이 기준) 한 점에 닿았을 때.
+/// 그 점이 다른 모니터 위면 오버레이를 그 모니터로 옮기고, 같은 점의 새 좌표를 돌려준다. 아니면 None.
+#[tauri::command]
+pub fn transfer_monitor(
+    app: AppHandle,
+    window: WebviewWindow,
+    state: tauri::State<'_, Arc<OverlayState>>,
+    x: f64,
+    y: f64,
+) -> Result<Option<Transfer>, String> {
+    let geometry = *state.geometry.lock().unwrap();
+    if geometry.scale <= 0.0 {
+        return Ok(None);
+    }
+    let (desktop_x, desktop_y) = css_to_desktop(&geometry, x, y);
+    let screens = monitors::screens(&app);
+    let Some(target) = monitors::find_at(&screens, desktop_x, desktop_y).map(|index| &screens[index]) else {
         return Ok(None);
     };
-    let position = monitor.position();
-    let size = monitor.size();
-    window.set_position(PhysicalPosition::new(position.x, position.y))?;
-    window.set_size(PhysicalSize::new(size.width, size.height))?;
-    Ok(Some((position.x, position.y, size.width, size.height, monitor.scale_factor())))
+    let current = state.monitor();
+    if current.is_some_and(|key| monitors::same_screen(target, key)) {
+        return Ok(None);
+    }
+    move_to(&app, &window, &state, target).map_err(|error| error.to_string())?;
+    let moved = *state.geometry.lock().unwrap();
+    let (x, y) = desktop_to_css(&moved, desktop_x, desktop_y);
+    let info = stage_info(app, window, state)?;
+    Ok(Some(Transfer { info, x, y }))
+}
+
+/// 모니터를 빼거나 해상도·배치가 바뀌어 지금 모니터가 그대로 없으면 기억한 모니터(없으면 주 모니터)로 다시 맞춘다.
+/// 창 목록 폴링 스레드에서 가끔 부른다. 웹뷰는 창 크기 변경(resize)으로 새 무대 정보를 받는다.
+pub fn check_monitor(app: &AppHandle) {
+    let state = app.state::<Arc<OverlayState>>();
+    let Some(current) = state.monitor() else {
+        return;
+    };
+    let screens = monitors::screens(app);
+    if screens.is_empty() || screens.iter().any(|screen| monitors::same_screen(screen, current)) {
+        return;
+    }
+    let wanted = app.state::<SettingsState>().0.lock().unwrap().monitor.clone();
+    let Some(index) = monitors::remembered(&screens, wanted.as_ref()) else {
+        return;
+    };
+    let screen = screens[index].clone();
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        let Some(window) = handle.get_webview_window("main") else {
+            return;
+        };
+        let state = handle.state::<Arc<OverlayState>>();
+        // 주 모니터로 돌아갈 때는 기억한 모니터를 지우지 않는다 (다시 꽂으면 그쪽에서 시작하게 fit_window만)
+        let _ = monitors::fit_window(&window, &screen);
+        *state.monitor.lock().unwrap() = Some(monitors::screen_key(&screen));
+        refresh_geometry(&window, &state);
+    });
 }
 
 /// Alt+Tab·작업표시줄에서 숨기고, 클릭해도 포커스를 뺏지 않으며, DWM 테두리를 없앤다.
@@ -167,7 +271,7 @@ fn hide_window_chrome(window: &WebviewWindow) {
 
 /// 화면 물리 px 커서 위치
 #[cfg(windows)]
-fn cursor_point(_app: &AppHandle) -> Option<(i32, i32)> {
+fn cursor_point(_app: &AppHandle, _scale: f64) -> Option<(i32, i32)> {
     use windows::Win32::Foundation::POINT;
     use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
     let mut point = POINT::default();
@@ -175,8 +279,19 @@ fn cursor_point(_app: &AppHandle) -> Option<(i32, i32)> {
     Some((point.x, point.y))
 }
 
-#[cfg(not(windows))]
-fn cursor_point(app: &AppHandle) -> Option<(i32, i32)> {
+/// macOS: tauri의 cursor_position()은 매번 메인 스레드를 거쳐 와서(초당 125번) 그것만으로 CPU 한 코어의 약 4.5%를 썼다.
+/// CoreGraphics에서 바로 읽는다 (포인트 단위 → 오버레이 배율을 곱해 물리 px).
+#[cfg(target_os = "macos")]
+fn cursor_point(_app: &AppHandle, scale: f64) -> Option<(i32, i32)> {
+    use core_graphics::event::CGEvent;
+    use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
+    let source = CGEventSource::new(CGEventSourceStateID::CombinedSessionState).ok()?;
+    let point = CGEvent::new(source).ok()?.location();
+    Some(((point.x * scale).round() as i32, (point.y * scale).round() as i32))
+}
+
+#[cfg(not(any(windows, target_os = "macos")))]
+fn cursor_point(app: &AppHandle, _scale: f64) -> Option<(i32, i32)> {
     let position = app.cursor_position().ok()?;
     Some((position.x.round() as i32, position.y.round() as i32))
 }
@@ -185,15 +300,23 @@ fn poll_cursor(app: AppHandle, state: Arc<OverlayState>) {
     let mut last_point: Option<(i32, i32)> = None;
     let mut was_near = false;
     loop {
-        thread::sleep(POLL_INTERVAL);
-
-        let Some((point_x, point_y)) = cursor_point(&app) else {
+        thread::sleep(if was_near { POLL_NEAR } else { POLL_FAR });
+        if crate::platforms::is_fullscreen(&app) {
+            if was_near {
+                let _ = app.emit_to("main", "cursor", CursorPayload { x: -1.0, y: -1.0, near: false });
+                was_near = false;
+            }
+            thread::sleep(POLL_HIDDEN);
             continue;
-        };
+        }
+
         let geometry = *state.geometry.lock().unwrap();
         if geometry.scale <= 0.0 {
             continue;
         }
+        let Some((point_x, point_y)) = cursor_point(&app, geometry.scale) else {
+            continue;
+        };
         let x = (point_x - geometry.x) as f64 / geometry.scale;
         let y = (point_y - geometry.y) as f64 / geometry.scale;
         let inside_window = point_x >= geometry.x
@@ -244,7 +367,19 @@ pub fn set_interest_rect(state: tauri::State<'_, Arc<OverlayState>>, rect: Optio
 
 /// 창 크기와 작업 영역(작업표시줄 제외)을 CSS px로 돌려준다.
 #[tauri::command]
-pub fn stage_info(window: WebviewWindow) -> Result<StageInfo, String> {
+pub fn stage_info(
+    app: AppHandle,
+    window: WebviewWindow,
+    state: tauri::State<'_, Arc<OverlayState>>,
+) -> Result<StageInfo, String> {
+    let (open_left, open_right) = state
+        .monitor()
+        .and_then(|key| {
+            let screens = monitors::screens(&app);
+            let current = screens.iter().find(|screen| monitors::same_screen(screen, key))?.rect;
+            Some(monitors::open_sides(&screens, &current))
+        })
+        .unwrap_or((false, false));
     let scale = window.scale_factor().map_err(|error| error.to_string())?;
     let position = window.outer_position().map_err(|error| error.to_string())?;
     let size = window.outer_size().map_err(|error| error.to_string())?;
@@ -263,5 +398,7 @@ pub fn stage_info(window: WebviewWindow) -> Result<StageInfo, String> {
             width: area.size.width as f64 / scale,
             height: area.size.height as f64 / scale,
         },
+        open_left,
+        open_right,
     })
 }

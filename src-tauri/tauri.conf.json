@@ -36,7 +36,9 @@
   "bundle": {
     "active": true,
     "targets": [
-      "nsis"
+      "nsis",
+      "app",
+      "dmg"
     ],
     "icon": [
       "icons/32x32.png",
@@ -44,6 +46,48 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "category": "Entertainment",
+    "shortDescription": "바탕화면 위에 살아 움직이는 데스크톱 메이트",
+    "longDescription": "MMD 모델이 바탕화면과 창 위를 걸어 다니는 데스크톱 메이트. 모델은 설치 파일에 들어 있지 않고 직접 가져온다.",
+    "copyright": "© 2026 sleeeppy",
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": [
+          "Korean",
+          "English"
+        ],
+        "displayLanguageSelector": false,
+        "startMenuFolder": "ScreenMate",
+        "installerIcon": "icons/icon.ico",
+        "sidebarImage": "installer/nsis-sidebar.bmp",
+        "headerImage": "installer/nsis-header.bmp",
+        "uninstallerHeaderImage": "installer/nsis-header.bmp",
+        "uninstallerIcon": "icons/icon.ico"
+      },
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper",
+        "silent": true
+      }
+    },
+    "macOS": {
+      "minimumSystemVersion": "12.0",
+      "dmg": {
+        "background": "installer/dmg-background.png",
+        "windowSize": {
+          "width": 660,
+          "height": 420
+        },
+        "appPosition": {
+          "x": 170,
+          "y": 205
+        },
+        "applicationFolderPosition": {
+          "x": 490,
+          "y": 205
+        }
+      }
+    }
   }
 }

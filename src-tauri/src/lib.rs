@@ -1,4 +1,6 @@
+mod library;
 mod models;
+mod monitors;
 mod overlay;
 mod platforms;
 mod settings;
@@ -14,11 +16,14 @@ use tauri::Manager;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        // 로그인할 때 자동 시작 (Windows: 레지스트리 Run, macOS: LaunchAgent). 켜고 끄는 건 설정 창에서.
+        .plugin(tauri_plugin_autostart::Builder::new().build())
         .register_asynchronous_uri_scheme_protocol("mate", models::handle_protocol)
         .invoke_handler(tauri::generate_handler![
             overlay::set_interest_rect,
             overlay::set_click_through,
             overlay::stage_info,
+            overlay::transfer_monitor,
             platforms::set_platform_rate,
             platforms::fullscreen_state,
             models::list_models,
@@ -33,6 +38,9 @@ pub fn run() {
             window::reload_character,
             window::quit_app,
             models::clear_model_cache,
+            models::delete_models,
+            library::get_library,
+            library::save_library,
             settings::get_settings,
             settings::select_model,
             tray::register_motions,
@@ -117,7 +125,7 @@ fn import_arguments() -> Vec<PathBuf> {
 }
 
 /// 선택된 모델이 없거나 지워졌으면 첫 모델을 고른다.
-fn ensure_selection(app: &tauri::AppHandle) {
+pub(crate) fn ensure_selection(app: &tauri::AppHandle) {
     let registry = models::load_registry(app);
     let current = app.state::<settings::SettingsState>().0.lock().unwrap().model_id.clone();
     let valid = current.as_ref().is_some_and(|id| registry.iter().any(|entry| &entry.id == id));

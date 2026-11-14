@@ -3,6 +3,7 @@
 //! 디스크 구조 (%APPDATA%\dev.sleeeppy.screenmate)
 //! ├─ models\<package>\...      가져온 폴더 사본 (readme 포함, 이름 복원됨)
 //! ├─ models\registry.json      모델 목록
+//! ├─ models\library.json       폴더·바꾼 이름 (library.rs)
 //! ├─ cache\<id>.bpmx           babylon-mmd 최적화 포맷 캐시
 //! ├─ profiles\<id>.json        자동 보정값 + 사용자 덮어쓰기
 //! └─ thumbnails\v3\<id>.*      설정 창 카드: 전신(.png), 머리~허벅지(.card.png), 모델 색(.json)
@@ -347,6 +348,50 @@ pub fn clear_model_cache(app: AppHandle, id: String) -> Result<(), String> {
         Err(error) if error.kind() != io::ErrorKind::NotFound => Err(error.to_string()),
         _ => Ok(()),
     }
+}
+
+/// 모델을 지운다: 목록에서 빼고, 캐시·프로필·썸네일을 지우고, 가져온 사본 폴더는 그 안의 모델이 모두 지워졌을 때만 지운다
+/// (Sour式처럼 한 폴더에 여러 모델이 텍스처를 같이 쓰므로). 처음 가져온 원본 폴더는 건드리지 않는다.
+/// 지금 쓰는 모델을 지웠으면 남은 첫 모델로 바꾼다.
+#[tauri::command]
+pub fn delete_models(app: AppHandle, ids: Vec<String>) -> Result<usize, String> {
+    let root = data_root(&app)?;
+    let models_dir = root.join("models");
+    let mut models = load_registry(&app);
+    let before = models.len();
+    let removed: Vec<ModelEntry> = models.iter().filter(|entry| ids.contains(&entry.id)).cloned().collect();
+    models.retain(|entry| !ids.contains(&entry.id));
+    save_registry(&app, &models)?;
+
+    for entry in &removed {
+        let _ = fs::remove_file(root.join("cache").join(format!("{}.bpmx", entry.id)));
+        let _ = fs::remove_file(root.join("profiles").join(format!("{}.json", entry.id)));
+        for kind in ["full", "card", "look"] {
+            if let Some(name) = thumbnail_file(&entry.id, kind) {
+                let _ = fs::remove_file(root.join(THUMBNAILS).join(name));
+            }
+        }
+        // 가져온 사본 폴더 (models\<package>). 같은 폴더의 모델이 남아 있으면 두고, 경로가 이상하면 건드리지 않는다
+        let Some(package) = entry.file.split('/').next().filter(|package| !package.is_empty()) else {
+            continue;
+        };
+        let still_used = models.iter().any(|other| other.file.split('/').next() == Some(package));
+        let directory = models_dir.join(package);
+        let safe = Path::new(package).components().count() == 1
+            && matches!(Path::new(package).components().next(), Some(Component::Normal(_)));
+        if !still_used && safe && directory.is_dir() {
+            fs::remove_dir_all(&directory).map_err(|error| format!("{} 지우기 실패: {error}", directory.display()))?;
+        }
+    }
+
+    let mut library = crate::library::load(&app);
+    library.prune(&models);
+    crate::library::save(&app, &library)?;
+    crate::ensure_selection(&app);
+    let _ = app.emit("models-changed", ());
+    let _ = app.emit("library-changed", &library);
+    crate::tray::refresh(&app);
+    Ok(before - models.len())
 }
 
 fn ensure_known(app: &AppHandle, id: &str) -> Result<(), String> {
