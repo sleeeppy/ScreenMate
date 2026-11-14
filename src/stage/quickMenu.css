@@ -29,6 +29,10 @@
   opacity: 0;
 }
 
+.windows .qm {
+  font-family: "Pretendard Variable", Pretendard, "Segoe UI", "Malgun Gothic", sans-serif;
+}
+
 .qm,
 .qm * {
   box-sizing: border-box;

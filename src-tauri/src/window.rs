@@ -31,8 +31,9 @@ pub fn open_settings(app: &AppHandle) {
     }
 }
 
+/// 동기 명령은 메인 스레드에서 돌아서, Windows에서 그 안에서 창을 만들면 WebView2가 교착돼 하얀 창으로 멈춘다.
 #[tauri::command]
-pub fn open_settings_window(app: AppHandle) {
+pub async fn open_settings_window(app: AppHandle) {
     open_settings(&app);
 }
 

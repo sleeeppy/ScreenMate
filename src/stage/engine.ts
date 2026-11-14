@@ -160,7 +160,13 @@ export class Stage {
     this.space = new StageSpace(info.height, 1);
     this.box = new FollowBox(canvas, () => this.engine.resize());
     this.hit = new HitTester(this.engine, canvas, this.box);
-    this.quickMenu = new QuickMenu({ capture: (on) => this.hit.hold(on) });
+    const hit = this.hit;
+    this.quickMenu = new QuickMenu({
+      capture: (area) => hit.hold(area),
+      get capturing() {
+        return hit.capturing;
+      },
+    });
 
     const stage = this;
     this.behavior = new Behavior({

@@ -26,6 +26,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             overlay::set_interest_rect,
             overlay::set_click_through,
+            overlay::mouse_pressed,
             overlay::stage_info,
             overlay::transfer_monitor,
             platforms::set_platform_rate,

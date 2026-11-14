@@ -2,15 +2,27 @@
  * 캐릭터 우클릭 빠른 메뉴: 앱(설정 창) 열기와 자주 바꾸는 설정 몇 개.
  *
  * 설정 창의 오른쪽 클릭 메뉴(.menu)처럼 작고 단순하게: 앱 열기, 스위치 셋, 크기, 종료.
- * 오버레이 창은 평소 캐릭터 픽셀 위에서만 입력을 받으므로, 열려 있는 동안은 화면 전체 입력을 붙잡는다(capture).
- * 메뉴 밖을 누르면 닫히고 그 클릭은 아래 창으로 가지 않는다 (보통 메뉴처럼).
+ * 오버레이 창은 평소 캐릭터 픽셀 위에서만 입력을 받으므로, 열려 있는 동안은 메뉴 자리에서도 입력을 받는다(capture).
+ * 그 밖을 누르면 메뉴가 닫히고 클릭은 그대로 아래 창으로 간다. 클릭 통과 중이라 웹뷰는 그 클릭을 못 받으므로
+ * 마우스 버튼 상태를 Rust에서 읽어 알아챈다. 버튼 상태를 알 수 없는 플랫폼이면 예전처럼 화면 전체를 붙잡는다.
  */
-import { getSettings, onSettingsChanged, openSettingsWindow, quitApp, updateSettings, type Settings } from "../ipc";
+import {
+  getSettings,
+  mousePressed,
+  onSettingsChanged,
+  openSettingsWindow,
+  quitApp,
+  updateSettings,
+  type CssRect,
+  type Settings,
+} from "../ipc";
 import "./quickMenu.css";
 
 export interface QuickMenuHost {
-  /** 열려 있는 동안 화면 전체 입력을 받는다 (클릭 통과 끄기) */
-  capture(on: boolean): void;
+  /** 열려 있는 동안 이 자리(또는 화면 전체)에서도 입력을 받는다. null이면 평소대로 */
+  capture(area: CssRect | "screen" | null): void;
+  /** 지금 오버레이가 커서 아래 입력을 받고 있는지 (메뉴·캐릭터 위) */
+  readonly capturing: boolean;
 }
 
 type ToggleKey = "gaze" | "variety" | "ledges";
@@ -35,11 +47,14 @@ const SIZES: readonly { label: string; value: number }[] = [
 const GAP = 8;
 const MARGIN = 12;
 const CLOSE_MS = 130;
+/** 메뉴 밖 클릭을 알아채려고 마우스 버튼을 읽는 간격 (ms) */
+const PRESS_POLL_MS = 30;
 
 export class QuickMenu {
   private element: HTMLElement | null = null;
   private settings: Settings | null = null;
   private closing: number | null = null;
+  private watching: number | null = null;
 
   constructor(private readonly host: QuickMenuHost) {
     void onSettingsChanged((next) => {
@@ -64,7 +79,7 @@ export class QuickMenu {
 
   async open(point: { x: number; y: number }): Promise<void> {
     this.removeNow();
-    this.host.capture(true);
+    this.host.capture("screen");
     try {
       this.settings = await getSettings();
     } catch {
@@ -99,6 +114,34 @@ export class QuickMenu {
     this.sync(false);
     this.place(element, point);
     element.addEventListener("click", (event) => this.onClick(event));
+    void this.watchOutside(element);
+  }
+
+  /** 메뉴 자리만 붙잡고, 오버레이 밖(클릭 통과 중) 버튼이 새로 눌리면 닫는다 */
+  private async watchOutside(element: HTMLElement): Promise<void> {
+    let was = await mousePressed().catch(() => null);
+    if (was === null || this.element !== element) return;
+    // 펼쳐지는 애니메이션(transform)과 상관없는 레이아웃 자리
+    this.host.capture({
+      x: element.offsetLeft,
+      y: element.offsetTop,
+      width: element.offsetWidth,
+      height: element.offsetHeight,
+    });
+    const tick = async () => {
+      this.watching = null;
+      if (this.element !== element || this.closing !== null) return;
+      const down = (await mousePressed().catch(() => false)) ?? false;
+      if (this.element !== element || this.closing !== null) return;
+      // 오버레이 위(메뉴·캐릭터)를 누른 건 웹뷰가 직접 받는다
+      if (down && !was && !this.host.capturing) {
+        this.close();
+        return;
+      }
+      was = down;
+      this.watching = window.setTimeout(tick, PRESS_POLL_MS);
+    };
+    this.watching = window.setTimeout(tick, PRESS_POLL_MS);
   }
 
   close(): void {
@@ -112,10 +155,12 @@ export class QuickMenu {
   private removeNow(): void {
     if (this.closing !== null) window.clearTimeout(this.closing);
     this.closing = null;
+    if (this.watching !== null) window.clearTimeout(this.watching);
+    this.watching = null;
     if (!this.element) return;
     this.element.remove();
     this.element = null;
-    this.host.capture(false);
+    this.host.capture(null);
   }
 
   /** 커서 오른쪽 아래에 띄우고, 화면 끝에 닿으면 반대쪽으로. 펼쳐지는 기준점도 커서 쪽 모서리. */

@@ -1,5 +1,6 @@
 import type { Engine } from "@babylonjs/core/Engines/engine";
 import { invoke } from "@tauri-apps/api/core";
+import type { CssRect } from "../ipc";
 import type { FollowBox } from "./followBox";
 
 const HIT_ALPHA = 8;
@@ -19,8 +20,8 @@ export class HitTester {
   private pressed = false;
   private misses = 0;
   private pending = false;
-  /** 빠른 메뉴가 열려 있으면 화면 전체 입력을 받는다 */
-  private holding = false;
+  /** 빠른 메뉴 자리 (CSS px): 캐릭터 픽셀처럼 입력을 받는다. "screen"이면 화면 전체 */
+  private held: CssRect | "screen" | null = null;
 
   constructor(
     private readonly engine: Engine,
@@ -44,7 +45,12 @@ export class HitTester {
 
   /** scene.render() 직후에 호출한다 (같은 프레임 버퍼를 읽어야 함). */
   sample(cursor: { x: number; y: number } | null): void {
-    if (this.pressed || this.pending || this.holding) {
+    if (this.pressed || this.pending || this.held === "screen") {
+      return;
+    }
+    if (cursor && this.held && contains(this.held, cursor)) {
+      this.misses = 0;
+      this.setIgnoring(false);
       return;
     }
     if (!cursor || !this.box.contains(cursor.x, cursor.y)) {
@@ -77,10 +83,13 @@ export class HitTester {
       });
   }
 
-  /** 켜면 픽셀과 상관없이 입력을 받는다 (빠른 메뉴가 열려 있는 동안). 끄면 다음 판정부터 평소대로. */
-  hold(on: boolean): void {
-    this.holding = on;
-    if (on) {
+  /**
+   * 빠른 메뉴가 열려 있는 동안 그 자리에서도 입력을 받는다 (나머지는 평소처럼 캐릭터 픽셀만).
+   * "screen"이면 화면 전체를 붙잡는다. null이면 다음 판정부터 평소대로.
+   */
+  hold(area: CssRect | "screen" | null): void {
+    this.held = area;
+    if (area) {
       this.misses = 0;
       this.setIgnoring(false);
     }
@@ -93,7 +102,7 @@ export class HitTester {
   }
 
   private noteMiss(): void {
-    if (this.pressed || this.holding) {
+    if (this.pressed || this.held === "screen") {
       return;
     }
     this.misses += 1;
@@ -110,6 +119,10 @@ export class HitTester {
     // Rust 쪽에서 전환 후 창 스타일(포커스 안 뺏기·Alt+Tab 숨김)을 다시 붙인다.
     void invoke("set_click_through", { ignore: next });
   }
+}
+
+function contains(rect: CssRect, point: { x: number; y: number }): boolean {
+  return point.x >= rect.x && point.y >= rect.y && point.x < rect.x + rect.width && point.y < rect.y + rect.height;
 }
 
 function clamp(value: number, min: number, max: number): number {

@@ -365,6 +365,38 @@ pub fn set_interest_rect(state: tauri::State<'_, Arc<OverlayState>>, rect: Optio
     *state.interest.lock().unwrap() = rect;
 }
 
+/// 마우스 버튼(왼쪽·오른쪽·가운데)이 눌려 있는지. 클릭 통과 중이라 웹뷰가 받지 못한 클릭을 알아챌 때 쓴다.
+/// 이 플랫폼에서 알 수 없으면 None.
+#[tauri::command]
+pub fn mouse_pressed() -> Option<bool> {
+    mouse_buttons_down()
+}
+
+#[cfg(windows)]
+fn mouse_buttons_down() -> Option<bool> {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON, VK_MBUTTON, VK_RBUTTON};
+    Some(
+        [VK_LBUTTON, VK_RBUTTON, VK_MBUTTON]
+            .iter()
+            .any(|key| unsafe { GetAsyncKeyState(i32::from(key.0)) } < 0),
+    )
+}
+
+#[cfg(target_os = "macos")]
+fn mouse_buttons_down() -> Option<bool> {
+    #[link(name = "CoreGraphics", kind = "framework")]
+    extern "C" {
+        fn CGEventSourceButtonState(state_id: i32, button: u32) -> bool;
+    }
+    // kCGEventSourceStateCombinedSessionState = 0, 버튼 0 왼쪽 · 1 오른쪽 · 2 가운데
+    Some((0..3).any(|button| unsafe { CGEventSourceButtonState(0, button) }))
+}
+
+#[cfg(not(any(windows, target_os = "macos")))]
+fn mouse_buttons_down() -> Option<bool> {
+    None
+}
+
 /// 창 크기와 작업 영역(작업표시줄 제외)을 CSS px로 돌려준다.
 #[tauri::command]
 pub fn stage_info(

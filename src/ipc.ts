@@ -141,6 +141,8 @@ export function diag(message: string): void {
 
 export const setInterestRect = (rect: CssRect | null): Promise<void> =>
   invoke("set_interest_rect", { rect });
+/** 마우스 버튼이 하나라도 눌려 있는지 (클릭 통과 중에도). 이 플랫폼에서 알 수 없으면 null */
+export const mousePressed = (): Promise<boolean | null> => invoke("mouse_pressed");
 
 export const listModels = (): Promise<ModelListing[]> => invoke("list_models");
 
