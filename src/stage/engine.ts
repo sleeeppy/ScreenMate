@@ -22,6 +22,7 @@ import {
 import { createMmdWorld, loadCharacter, type LoadedCharacter, type MmdWorld } from "../mmd/loadModel";
 import { Behavior, rotateCss, type Arena } from "../behavior/behavior.ts";
 import { attachPointer } from "../behavior/interaction";
+import { QuickMenu } from "./quickMenu";
 import { computeLedges, type Ledge, type WindowRect } from "../behavior/platforms.ts";
 import { idle, motionByName } from "../motion/clips/index.ts";
 import { isPassingFrame, WALK_SPEED_UNITS } from "../motion/clips/walk.ts";
@@ -50,6 +51,12 @@ const LEDGE = { headroom: 1.1, minWidth: 0.45 };
 const PHYSICS_TRAVEL = 0.15;
 /** 기준점이 가슴 ↔ 잡은 점으로 바뀔 때 물리 위치가 튀지 않게 발 기준 오프셋을 이 반감기(초)로 옮긴다 */
 const PIVOT_BLEND = 0.12;
+/**
+ * 놓아서 바로 걸터앉을 때(발 기준점만 옮김) 물리 기준점이 새 자리(가슴 높이)로 가는 반감기 (초).
+ * 엉덩이를 잡고 있었으면 기준점이 150px 넘게 옮겨야 해서, 보통 빠르기(0.12초)면 물리 세계에서 몸이 0.3초에
+ * 5단위 넘게 끌려 내려가 머리카락·치마·리본이 휘날렸다.
+ */
+const PIVOT_BLEND_REANCHOR = 0.9;
 /** 걸터앉았을 때 캔버스 상자 (키 배수): 발 기준점 아래로 다리가 0.4배쯤 내려간다 */
 // 일어서는 모션 끝에서 선 머리까지 들어가도록 위로도 넉넉하게 (발 위 키 1.25배)
 const SEAT_EDGE_BOX = { widthRatio: 1.35, heightRatio: 1.75, footPadRatio: 0.5 };
@@ -66,6 +73,7 @@ export class Stage {
   private readonly camera;
   private readonly box: FollowBox;
   private readonly hit: HitTester;
+  private readonly quickMenu: QuickMenu;
   private readonly pacer = new FramePacer();
   private readonly space: StageSpace;
   private world: MmdWorld | null = null;
@@ -81,10 +89,13 @@ export class Stage {
   private gazeEnabled = true;
   /** 발 → 물리 기준점 (CSS px, 부드럽게 따라감). null이면 다음 프레임에 바로 맞춘다. */
   private pivotOffset: { x: number; y: number } | null = null;
+  private pivotHalfLife = PIVOT_BLEND;
   private activeUntil = 0;
 
-  /** 캐릭터 키(頭 본 높이) CSS px */
+  /** 그리는 캐릭터 키(頭 본 높이) CSS px = 설정 키 × 행동 배율 (크게 엿보기 2.3배) */
   heightPx = 260;
+  /** 설정 창에서 정한 캐릭터 키 (행동은 이 키로 걷고 판단한다) */
+  private baseHeight = 260;
   /** 행동: 발 위치·몸 방향·기울기를 정한다 */
   readonly behavior: Behavior;
   private motionName = "idle";
@@ -147,11 +158,12 @@ export class Stage {
     this.space = new StageSpace(info.height, 1);
     this.box = new FollowBox(canvas, () => this.engine.resize());
     this.hit = new HitTester(this.engine, canvas, this.box);
+    this.quickMenu = new QuickMenu({ capture: (on) => this.hit.hold(on) });
 
     const stage = this;
     this.behavior = new Behavior({
       get heightPx() {
-        return stage.heightPx;
+        return stage.baseHeight;
       },
       get walkSpeedPx() {
         return stage.walkSpeedPx();
@@ -176,6 +188,9 @@ export class Stage {
       release: (now) => this.behavior.release(now, this.arena()),
       click: (point) => {
         if (this.character) this.behavior.click(point);
+      },
+      menu: (point) => {
+        if (this.character && this.behavior.state !== "held") void this.quickMenu.open(point);
       },
     });
 
@@ -203,7 +218,39 @@ export class Stage {
     this.character?.resetPhysics();
   }
 
+  /** 설정 키를 바꾼다. 그리는 키는 행동 배율을 곱한 값 */
   setHeight(heightPx: number): void {
+    this.baseHeight = heightPx;
+    this.applyDrawHeight(heightPx * this.behavior.displayScale);
+  }
+
+  /**
+   * 행동이 배율을 바꾸거나(크게 엿보기, 화면 밖에서만) 순간이동하면(화면 밖 → 반대쪽) 물리를 새 자리·크기에 다시 놓는다.
+   * 그대로 두면 머리카락·치마가 옛 자리에서 끌려와 펄럭인다.
+   */
+  private syncScale(): void {
+    const teleported = this.behavior.consumeTeleport();
+    // 몸은 그대로 두고 발 기준점만 옮겼으면(놓아서 바로 걸터앉기) 물리 기준점은 제자리에 두었다가 천천히 옮긴다
+    const shift = this.behavior.consumeReanchor();
+    if (shift) {
+      const offset = this.pivotOffset ?? this.targetPivotOffset();
+      this.pivotOffset = { x: offset.x - shift.x, y: offset.y - shift.y };
+      this.pivotHalfLife = PIVOT_BLEND_REANCHOR;
+    }
+    const want = this.baseHeight * this.behavior.displayScale;
+    if (Math.abs(want - this.heightPx) >= 0.5) {
+      this.applyDrawHeight(want);
+      return;
+    }
+    if (teleported) {
+      this.pivotOffset = null;
+      this.syncCharacter();
+      this.character?.mesh.computeWorldMatrix(true);
+      this.character?.resetPhysics();
+    }
+  }
+
+  private applyDrawHeight(heightPx: number): void {
     if (Math.abs(heightPx - this.heightPx) < 0.5) {
       return;
     }
@@ -382,6 +429,7 @@ export class Stage {
       left: area.x,
       right: area.x + area.width,
       top: area.y,
+      bottom: this.info.height,
       openLeft: this.info.openLeft,
       openRight: this.info.openRight,
     };
@@ -479,7 +527,10 @@ export class Stage {
       this.pivotOffset = target;
       return;
     }
-    const keep = Math.pow(0.5, dt / PIVOT_BLEND);
+    // 다시 잡거나 날아가면 바로 보통 빠르기로 (들고 흔드는 동안 기준점이 늦으면 물리가 크게 휘둘린다)
+    const gap = Math.hypot(this.pivotOffset.x - target.x, this.pivotOffset.y - target.y);
+    if (this.behavior.airborne || gap < 2) this.pivotHalfLife = PIVOT_BLEND;
+    const keep = Math.pow(0.5, dt / this.pivotHalfLife);
     this.pivotOffset = {
       x: target.x + (this.pivotOffset.x - target.x) * keep,
       y: target.y + (this.pivotOffset.y - target.y) * keep,
@@ -542,7 +593,9 @@ export class Stage {
       return;
     }
     this.space.pixelsPerUnit = this.heightPx / character.calibration.headY;
-    const { feet, facing, roll } = this.behavior;
+    const { facing, roll } = this.behavior;
+    // 놓아서 걸터앉는 동안은 발 기준점(테두리)보다 위에서 내려앉는 그림 위치
+    const feet = this.behavior.shownFeet;
     const world = this.space.toWorld(feet.x, feet.y);
     // 몸이 매달린 기준점(behavior.pivot)의 이동만 줄이고, 그 점을 중심으로 한 회전은 그대로 둔다.
     const pivot = this.physicsPivot();
@@ -553,6 +606,10 @@ export class Stage {
     if (this.behavior.airborne) {
       const center = rotateCss({ x: 0, y: -this.heightPx * FREE_BOX.center }, roll);
       rect = this.box.around(feet.x + center.x, feet.y + center.y, this.heightPx * FREE_BOX.size);
+    } else if (this.behavior.state === "peek") {
+      // 크게 엿보기: 기운 큰 몸 (발이 화면 밖·아래에 있어도 보이는 머리 쪽이 잘리지 않게 몸 중심 기준 정사각형)
+      const center = rotateCss({ x: 0, y: -this.heightPx * 0.6 }, roll);
+      rect = this.box.around(feet.x + center.x, feet.y + center.y, this.heightPx * 1.7);
     } else if (this.behavior.seat === "edge") {
       // 걸터앉으면 다리가 테두리 아래로 내려간다. 앉는 동안(0.5초) 선 머리도 잘리지 않게 위아래 모두 넉넉히.
       rect = this.box.update(feet.x, feet.y, this.heightPx, SEAT_EDGE_BOX);
@@ -602,6 +659,7 @@ export class Stage {
         const y = Math.min(Math.max(this.behavior.feet.y - this.heightPx / 2, 0), this.info.height - 1);
         void this.transfer({ x: this.behavior.feet.x, y });
       }
+      this.syncScale();
       this.blendPivot(dt);
       this.syncPlatformRate();
       this.syncCharacter();

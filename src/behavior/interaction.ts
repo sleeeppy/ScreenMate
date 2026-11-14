@@ -10,6 +10,8 @@ export interface PointerHandlers {
   drag(point: Point, now: number): void;
   release(now: number): void;
   click(point: Point): void;
+  /** 캐릭터 위 우클릭 (빠른 메뉴) */
+  menu(point: Point): void;
 }
 
 /**
@@ -49,8 +51,12 @@ export function attachPointer(handlers: PointerHandlers): void {
   window.addEventListener("pointerup", finish);
   window.addEventListener("pointercancel", finish);
 
-  // WebView 기본 우클릭 메뉴(뒤로·새로고침·검사)를 막는다. 캐릭터 메뉴는 M6에서.
-  window.addEventListener("contextmenu", (event) => event.preventDefault());
+  // WebView 기본 우클릭 메뉴(뒤로·새로고침·검사) 대신 캐릭터 빠른 메뉴. 창은 캐릭터 픽셀 위에서만 입력을 받으므로
+  // 여기 오는 우클릭은 캐릭터 위다. 끄는 중에는 띄우지 않는다.
+  window.addEventListener("contextmenu", (event) => {
+    event.preventDefault();
+    if (!dragging) handlers.menu({ x: event.clientX, y: event.clientY });
+  });
   // 끌 때 글자 선택·드래그 이미지가 생기지 않게
   window.addEventListener("dragstart", (event) => event.preventDefault());
   window.addEventListener("selectstart", (event) => event.preventDefault());

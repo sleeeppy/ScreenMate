@@ -19,14 +19,17 @@ export class HitTester {
   private pressed = false;
   private misses = 0;
   private pending = false;
+  /** 빠른 메뉴가 열려 있으면 화면 전체 입력을 받는다 */
+  private holding = false;
 
   constructor(
     private readonly engine: Engine,
     private readonly canvas: HTMLCanvasElement,
     private readonly box: FollowBox,
   ) {
-    window.addEventListener("pointerdown", () => {
-      this.pressed = true;
+    // 끄는 동안만 입력을 붙잡는다 (왼쪽 버튼). 우클릭은 메뉴가 떠서 pointerup이 안 올 수 있어 세지 않는다.
+    window.addEventListener("pointerdown", (event) => {
+      if (event.button === 0) this.pressed = true;
     });
     const release = () => {
       this.pressed = false;
@@ -41,7 +44,7 @@ export class HitTester {
 
   /** scene.render() 직후에 호출한다 (같은 프레임 버퍼를 읽어야 함). */
   sample(cursor: { x: number; y: number } | null): void {
-    if (this.pressed || this.pending) {
+    if (this.pressed || this.pending || this.holding) {
       return;
     }
     if (!cursor || !this.box.contains(cursor.x, cursor.y)) {
@@ -74,6 +77,15 @@ export class HitTester {
       });
   }
 
+  /** 켜면 픽셀과 상관없이 입력을 받는다 (빠른 메뉴가 열려 있는 동안). 끄면 다음 판정부터 평소대로. */
+  hold(on: boolean): void {
+    this.holding = on;
+    if (on) {
+      this.misses = 0;
+      this.setIgnoring(false);
+    }
+  }
+
   /** 모델 교체 등으로 캐릭터가 사라졌을 때 */
   release(): void {
     this.misses = MISS_FRAMES;
@@ -81,7 +93,7 @@ export class HitTester {
   }
 
   private noteMiss(): void {
-    if (this.pressed) {
+    if (this.pressed || this.holding) {
       return;
     }
     this.misses += 1;

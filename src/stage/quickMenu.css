@@ -1,0 +1,208 @@
+/*
+ * 캐릭터 우클릭 빠른 메뉴. 설정 창의 오른쪽 클릭 메뉴(settings.css .menu)와 같은 모양:
+ * 어두운 반투명 바탕, 한 줄짜리 항목, 지나가면 옅게 밝아지고, 스위치·크기 선택은 설정 창 것을 작게.
+ */
+.qm {
+  --line: rgba(255, 255, 255, 0.08);
+  --text: #ececef;
+  --muted: #9c9ca6;
+  --accent: #3b7cf6;
+  --danger: #ff6b63;
+
+  position: fixed;
+  z-index: 1000;
+  width: 220px;
+  padding: 5px;
+  border-radius: 12px;
+  background: rgba(40, 40, 46, 0.95);
+  backdrop-filter: blur(22px) saturate(1.4);
+  -webkit-backdrop-filter: blur(22px) saturate(1.4);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.25);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Segoe UI", "Malgun Gothic", system-ui, sans-serif;
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: default;
+  opacity: 0;
+}
+
+.qm,
+.qm * {
+  box-sizing: border-box;
+}
+
+.qm button {
+  margin: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: default;
+  outline: none;
+}
+
+.qm svg {
+  display: block;
+}
+
+.qm-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 7px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+button.qm-row:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.qm-label {
+  flex: 1;
+  min-width: 0;
+}
+
+.qm-sep {
+  height: 1px;
+  margin: 4px 8px;
+  background: var(--line);
+}
+
+/* 앱 열기: 맨 위, 지나가면 파랗게 (macOS 메뉴처럼) */
+.qm .qm-open {
+  font-weight: 600;
+}
+
+.qm .qm-open svg {
+  width: 14px;
+  height: 14px;
+  color: var(--muted);
+}
+
+.qm .qm-open:hover {
+  background: var(--accent);
+  color: white;
+}
+
+.qm .qm-open:hover svg {
+  color: white;
+}
+
+.qm .qm-quit:hover {
+  background: rgba(255, 95, 87, 0.14);
+  color: var(--danger);
+}
+
+/* 스위치: 설정 창 .switch를 작게 */
+.qm-switch {
+  position: relative;
+  flex: none;
+  width: 30px;
+  height: 18px;
+  border-radius: 999px;
+  background: #4a4a52;
+  transition: background-color 0.25s ease;
+}
+
+.qm-switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: white;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+  transition: transform 0.28s cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+
+.qm-row.on .qm-switch {
+  background: var(--accent);
+}
+
+.qm-row.on .qm-switch::after {
+  transform: translateX(12px);
+}
+
+/* 크기: 설정 창 .choices를 작게 + 미끄러지는 판 */
+.qm-choices {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  padding: 2px;
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.28);
+}
+
+.qm-thumb {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 2px;
+  border-radius: 5px;
+  background: #4a4a52;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  transition: transform 0.26s cubic-bezier(0.3, 1.25, 0.5, 1), width 0.26s ease, opacity 0.2s;
+}
+
+.qm-thumb.still {
+  transition: none;
+}
+
+.qm-choices button {
+  position: relative;
+  padding: 2px 7px;
+  border-radius: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  transition: color 0.2s ease;
+}
+
+.qm-choices button:hover,
+.qm-choices button.on {
+  color: var(--text);
+}
+
+/* 나타나기·사라지기 (설정 창 메뉴처럼 짧게) */
+.qm.qm-in {
+  animation: qm-in 0.14s ease-out forwards;
+}
+
+.qm.qm-out {
+  animation: qm-out 0.12s ease-in forwards;
+}
+
+@keyframes qm-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes qm-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .qm.qm-in,
+  .qm.qm-out {
+    animation-duration: 1ms;
+  }
+}
