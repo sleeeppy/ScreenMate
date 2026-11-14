@@ -31,6 +31,8 @@ INK = {"light": (31, 35, 40), "dark": (240, 246, 252)}
 SUB = {"light": (89, 99, 110), "dark": (145, 152, 161)}
 
 HEADINGS = {
+    "features": "주요 기능",
+    "quiet": "방해하지 않아요",
     "settings": "설정",
     "models": "모델",
     "faq": "자주 묻는 질문",
