@@ -4,8 +4,7 @@
 <h1 align="center">ScreenMate</h1>
 
 <p align="center">
-  <b>바탕화면 위에서 살아 움직이는 MMD 데스크톱 메이트</b><br>
-  걸어 다니다 창 위로 뛰어올라 걸터앉고, 잡히면 버둥거리고, 쓰다듬으면 웃어요.
+  <b>바탕화면 위에서 살아 움직이는 나의 MMD 캐릭터 친구들</b><br>
 </p>
 
 <p align="center">
