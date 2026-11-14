@@ -76,6 +76,8 @@ export interface Settings {
   gaze: boolean;
   /** 로그인할 때 자동 시작 (운영체제 설정을 비춘 값) */
   autostart: boolean;
+  /** 처음 켰을 때 보여 주는 안내를 봤다 */
+  onboarded: boolean;
 }
 
 /** 캐릭터 지금 상태 (메인 창 → 설정 창 아래 막대) */
@@ -129,10 +131,6 @@ export const launchOptions = (): Promise<{
 }> =>
   invoke("launch_options");
 
-/** 트레이 "모션 미리보기" 메뉴를 채운다. */
-export const registerMotions = (items: { name: string; label: string }[], current: string | null): Promise<void> =>
-  invoke("register_motions", { items, current });
-
 export const onMotionPreview = (handler: (name: string) => void): Promise<UnlistenFn> =>
   listen<string>("motion-preview", (event) => handler(event.payload));
 
@@ -185,6 +183,30 @@ export const saveThumbnail = (id: string, kind: ThumbnailKind, bytes: ArrayBuffe
   invoke("save_thumbnail", new Uint8Array(bytes), {
     headers: { "x-model-id": encodeURIComponent(id), "x-thumb-kind": kind },
   });
+
+/** GitHub 최신 릴리스와 지금 버전을 비교한 결과 */
+export interface UpdateStatus {
+  current: string;
+  latest: string | null;
+  /** 더 새로운 릴리스가 있다 */
+  available: boolean;
+  /** 받은 파일로 지금 앱을 그 자리에서 바꿀 수 있다 */
+  installable: boolean;
+  /** 설치할 수 없을 때 이유 */
+  reason: string | null;
+  page: string | null;
+}
+
+export interface UpdateProgress {
+  phase: "download" | "install";
+  fraction: number;
+}
+
+export const checkForUpdate = (): Promise<UpdateStatus> => invoke("check_for_update");
+export const installUpdate = (): Promise<void> => invoke("install_update");
+export const openUpdatePage = (page: string): Promise<void> => invoke("open_update_page", { page });
+export const onUpdateProgress = (handler: (progress: UpdateProgress) => void): Promise<UnlistenFn> =>
+  listen<UpdateProgress>("update-progress", (event) => handler(event.payload));
 
 export const openSettingsWindow = (): Promise<void> => invoke("open_settings_window");
 export const importModels = (): Promise<void> => invoke("import_models");

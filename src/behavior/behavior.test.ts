@@ -647,6 +647,24 @@ test("자율: 엿보다가 눌리면 얼른 숨는다", () => {
   assert.notEqual(behavior.state, "peek");
 });
 
+test("자율: 아래에서 엿본 뒤에는 끝까지 내려가 숨고, 쉬는 동안 화면 아래에 머리가 남지 않는다", () => {
+  const { actor } = makeActor();
+  const behavior = new Behavior(actor, sequence(0.5, 0, 0.1, 0.9), { variety: true });
+  behavior.place(300, arena);
+  (behavior as unknown as { startPeek(kind: string, where: Arena): void }).startPeek("up", arena);
+  const hidden = behavior.feet.y;
+  assert.ok(hidden - 260 * 2.3 * 1.4 > arena.ground, "머리카락이 솟은 모델도 처음엔 다 숨어 있다");
+  let lowest = 0;
+  for (let t = 0; t < 15 && behavior.state === "peek"; t += 1 / 60) {
+    behavior.update(1 / 60, arena);
+    lowest = Math.max(lowest, behavior.feet.y);
+  }
+  assert.equal(behavior.state, "away");
+  assert.ok(lowest - 260 * 2.3 * 1.3 > arena.ground, `머리 위로 솟은 부분까지 화면 아래로 내려간다 y=${lowest}`);
+  assert.equal(behavior.displayScale, 1, "보통 크기로 돌아온다");
+  assert.ok(behavior.feet.x < arena.left || behavior.feet.x > arena.right, `옆 화면 밖에서 쉰다 x=${behavior.feet.x}`);
+});
+
 test("자율 모드 20분: 새 행동이 모두 나오고, 한 상태에 오래 갇히지 않으며, 화면 밖에서 늘 돌아온다", () => {
   // 모션은 1.2초 뒤에 끝난다고 친다 (반복 모션은 끝나지 않음)
   const loops = new Set(["idle", "walk", "fall", "hang", "jump_air", "sit_edge", "sit_floor", "sleep_edge", "sleep_floor", "peek_left", "peek_right", "peek_up"]);

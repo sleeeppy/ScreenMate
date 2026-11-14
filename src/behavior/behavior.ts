@@ -168,9 +168,20 @@ const ENTER_OPPOSITE = 0.7;
 const OFFSTAGE = 1.0;
 /**
  * 크게 엿보기: 배율, 들어오기·나가기 시간(초), 머무는 시간, 옆에서 기울이는 각도(라디안),
- * 옆 엿보기 발 위치(큰 키 배수만큼 화면 밖), 아래 엿보기에서 보이는 부분(큰 키 배수)
+ * 옆 엿보기 발 위치(큰 키 배수만큼 화면 밖), 아래 엿보기에서 보이는 부분(큰 키 배수),
+ * 아래 엿보기에서 숨을 때 발 위치(큰 키 배수만큼 화면 아래 밖). 머리카락·리본이 키보다 위로 솟은 모델도 다 숨게 넉넉히
  */
-const PEEK = { scale: 2.3, in: 1.6, out: 1.1, hold: { min: 2.8, max: 5 }, lean: 0.6, side: 0.36, upVisible: 0.26, facing: 0.18 };
+const PEEK = {
+  scale: 2.3,
+  in: 1.6,
+  out: 1.1,
+  hold: { min: 2.8, max: 5 },
+  lean: 0.6,
+  side: 0.36,
+  upVisible: 0.26,
+  upHidden: 1.45,
+  facing: 0.18,
+};
 /** 돌아올 때 고르는 확률: 보통 크기로 고개 내밀고 들어오기, 옆에서 크게, 아래에서 크게. 나머지는 그냥 걸어 들어오기 */
 const RETURN_CHOICES = { peekIn: 0.4, bigSide: 0.25, bigUp: 0.2 };
 /** 고개 내밀어 둘러보는 시간 (초) */
@@ -246,6 +257,7 @@ export class Behavior {
     phase: "in" | "hold" | "out";
     time: number;
     hold: number;
+    in: number;
     out: number;
     from: Point;
     to: Point;
@@ -617,7 +629,7 @@ export class Behavior {
     if (this.state === "peek" && this.peekState && this.peekState.phase !== "out") {
       this.peekState.phase = "out";
       this.peekState.time = 0;
-      this.peekState.out = PEEK.out * 0.6;
+      this.peekState.out *= 0.6;
       return;
     }
     if (this.airborne || this.state === "land" || this.state === "rise") return;
@@ -898,7 +910,7 @@ export class Behavior {
     if (kind === "up") {
       const bottom = arena.bottom ?? arena.ground;
       const x = arena.left + (arena.right - arena.left) * (0.2 + 0.6 * this.random());
-      from = { x, y: bottom + big * 1.05 };
+      from = { x, y: bottom + big * PEEK.upHidden };
       to = { x, y: bottom + big * (1 - PEEK.upVisible) };
       this.targetFacing = 0;
     } else {
@@ -915,7 +927,9 @@ export class Behavior {
     const range = small ? PEEK_IN_HOLD : PEEK.hold;
     const hold = range.min + this.random() * (range.max - range.min);
     this.enter("peek");
-    this.peekState = { kind, phase: "in", time: 0, hold, out: PEEK.out, from, to, small };
+    // 아래 엿보기는 화면 밖 깊이 숨었다 나오니 조금 길게 (숨은 구간은 빨리 지나가게 updatePeek에서 가감속을 바꾼다)
+    const travel = kind === "up" ? 1.3 : 1;
+    this.peekState = { kind, phase: "in", time: 0, hold, in: PEEK.in * travel, out: PEEK.out * travel, from, to, small };
     this.actor.play(kind === "up" ? "peek_up" : kind === "left" ? "peek_left" : "peek_right");
   }
 
@@ -928,22 +942,26 @@ export class Behavior {
     if (this.paused) return;
     peek.time += dt;
     const ease = (t: number) => t * t * (3 - 2 * t);
+    // 아래 엿보기: 숨은 깊은 곳은 빨리 지나 보이는 곳에서 느려지고(올라오기), 보이는 곳에서 천천히 가라앉다가 빨라진다(내려가기)
+    const up = peek.kind === "up";
+    const easeIn = (t: number) => (up ? 1 - (1 - t) ** 3 : ease(t));
+    const easeOut = (t: number) => (up ? t ** 3 : ease(t));
     if (peek.phase === "in") {
-      const t = Math.min(1, peek.time / PEEK.in);
-      this.peekPose(peek, ease(t), peek.time);
+      const t = Math.min(1, peek.time / peek.in);
+      this.peekPose(peek, easeIn(t), peek.time);
       if (t >= 1) {
         peek.phase = "hold";
         peek.time = 0;
       }
     } else if (peek.phase === "hold") {
-      this.peekPose(peek, 1, peek.time + PEEK.in);
+      this.peekPose(peek, 1, peek.time + peek.in);
       if (peek.time >= peek.hold) {
         peek.phase = "out";
         peek.time = 0;
       }
     } else {
       const t = Math.min(1, peek.time / peek.out);
-      this.peekPose(peek, 1 - ease(t), 0);
+      this.peekPose(peek, 1 - easeOut(t), 0);
       if (t >= 1) {
         this.peekState = null;
         this.roll = 0;
@@ -952,9 +970,12 @@ export class Behavior {
           this.walkIn(arena, peek.kind);
           return;
         }
-        // 크게 엿봤으면 화면 밖에서 잠깐 쉬었다가 보통 크기로 걸어 들어온다
+        // 크게 엿봤으면 화면 밖에서 잠깐 쉬었다가 보통 크기로 걸어 들어온다.
+        // 쉬는 동안은 서 있는 자세로 바뀌므로, 숨은 자리(화면 아래·끝)에 큰 채로 두면 머리 끝이 삐져나온다 → 옆 화면 밖으로 옮겨 둔다.
         this.awayNext = "walkIn";
         const side = peek.kind === "up" ? (this.random() < 0.5 ? "left" : "right") : peek.kind;
+        this.resetScale();
+        this.feet = { x: this.offstageX(side, arena), y: arena.ground };
         this.goAway(side, AFTER_PEEK_SECONDS.min + this.random() * (AFTER_PEEK_SECONDS.max - AFTER_PEEK_SECONDS.min));
       }
     }

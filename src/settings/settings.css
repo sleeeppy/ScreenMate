@@ -1562,3 +1562,642 @@ input.rename {
   background: rgba(255, 95, 87, 0.14);
   color: var(--danger);
 }
+
+/* ------------------------------------------------------------------ 처음 켰을 때 안내 (tour.ts) */
+
+.tour-backdrop {
+  background: rgba(8, 8, 12, 0.62);
+}
+
+.dialog.tour {
+  position: relative;
+  width: 560px;
+  padding: 0;
+  overflow: hidden;
+}
+
+.tour-skip {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 2;
+  height: 26px;
+  padding: 0 11px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(236, 236, 239, 0.75);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.tour-skip:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: var(--text);
+}
+
+/* 위쪽 그림: 앱 아이콘·설치 화면과 같은 남색 밤하늘 */
+.tour-stage {
+  position: relative;
+  height: 250px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 22% 70%, rgba(74, 125, 255, 0.28), transparent 42%),
+    radial-gradient(circle at 80% 18%, rgba(155, 107, 255, 0.24), transparent 40%),
+    radial-gradient(1px 1px at 12% 20%, rgba(255, 255, 255, 0.7), transparent),
+    radial-gradient(1px 1px at 34% 12%, rgba(255, 255, 255, 0.5), transparent),
+    radial-gradient(1.5px 1.5px at 58% 30%, rgba(255, 255, 255, 0.6), transparent),
+    radial-gradient(1px 1px at 72% 62%, rgba(255, 255, 255, 0.45), transparent),
+    radial-gradient(1.5px 1.5px at 90% 44%, rgba(255, 255, 255, 0.55), transparent),
+    radial-gradient(1px 1px at 46% 80%, rgba(255, 255, 255, 0.4), transparent),
+    linear-gradient(180deg, #16172b, #0d0e1a);
+  border-bottom: 1px solid var(--line);
+}
+
+.tour-body {
+  min-height: 156px;
+  padding: 22px 28px 4px;
+}
+
+.tour-body h3 {
+  margin: 0 0 10px;
+  font-size: 18px;
+  font-weight: 750;
+  letter-spacing: -0.01em;
+}
+
+.tour-body p {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 13.5px;
+  line-height: 1.65;
+}
+
+.tour-body b {
+  color: var(--text);
+  font-weight: 650;
+}
+
+.tour-body code {
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: var(--pill);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.tour-body .tour-note {
+  font-size: 12.5px;
+  color: var(--faint);
+}
+
+.tour-inline {
+  margin-top: 2px;
+}
+
+.tour-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: 10px;
+  color: var(--ok);
+  font-weight: 600;
+}
+
+.tour-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 10px;
+}
+
+.tour-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.tour-list svg {
+  flex: none;
+  margin-top: 2px;
+  color: #8fb4ff;
+}
+
+.tour-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px 18px 28px;
+}
+
+.tour-dots {
+  display: flex;
+  gap: 7px;
+}
+
+.tour-dots span {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  transition:
+    width 0.25s ease,
+    background 0.25s ease;
+}
+
+.tour-dots span.on {
+  width: 20px;
+  background: var(--accent);
+}
+
+.tour-nav {
+  display: flex;
+  gap: 8px;
+}
+
+.tour-nav .button {
+  min-width: 84px;
+}
+
+.tour-nav .button:focus-visible {
+  outline: 2px solid rgba(143, 180, 255, 0.9);
+  outline-offset: 2px;
+}
+
+/* 장 넘김: 그림과 글이 넘기는 쪽에서 살짝 밀려 들어온다 */
+.from-right {
+  animation: tour-from-right 0.32s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.from-left {
+  animation: tour-from-left 0.32s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes tour-from-right {
+  from {
+    opacity: 0;
+    transform: translateX(26px);
+  }
+}
+
+@keyframes tour-from-left {
+  from {
+    opacity: 0;
+    transform: translateX(-26px);
+  }
+}
+
+/* 1. 환영: 떠 있는 아이콘과 퍼지는 고리, 반짝이 */
+.tour-welcome {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+}
+
+.tour-icon {
+  width: 112px;
+  height: 112px;
+  filter: drop-shadow(0 14px 30px rgba(60, 100, 255, 0.45));
+  animation: tour-float 3.2s ease-in-out infinite;
+}
+
+.tour-ring {
+  position: absolute;
+  width: 150px;
+  height: 150px;
+  border-radius: 999px;
+  border: 1.5px solid rgba(143, 180, 255, 0.5);
+  animation: tour-ring 3.2s ease-out infinite;
+}
+
+.tour-ring.r2 {
+  animation-delay: 1.6s;
+}
+
+.tour-spark {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  background: #eef1ff;
+  clip-path: polygon(50% 0, 60% 40%, 100% 50%, 60% 60%, 50% 100%, 40% 60%, 0 50%, 40% 40%);
+  animation: tour-twinkle 2.4s ease-in-out infinite;
+}
+
+.tour-spark.s0 { left: 30%; top: 26%; }
+.tour-spark.s1 { left: 68%; top: 20%; width: 10px; height: 10px; animation-delay: 0.6s; }
+.tour-spark.s2 { left: 74%; top: 66%; animation-delay: 1.2s; }
+.tour-spark.s3 { left: 24%; top: 68%; width: 9px; height: 9px; animation-delay: 1.8s; }
+.tour-spark.s4 { left: 52%; top: 12%; width: 8px; height: 8px; animation-delay: 0.9s; }
+
+@keyframes tour-float {
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+@keyframes tour-ring {
+  from {
+    transform: scale(0.75);
+    opacity: 0.9;
+  }
+  to {
+    transform: scale(1.7);
+    opacity: 0;
+  }
+}
+
+@keyframes tour-twinkle {
+  0%,
+  100% {
+    opacity: 0.15;
+    transform: scale(0.6) rotate(0deg);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1) rotate(45deg);
+  }
+}
+
+/* 2. 가져오기: 모델 파일이 폴더로 쏙 들어간다 */
+.tour-import {
+  position: absolute;
+  inset: 0;
+}
+
+.tour-folder {
+  position: absolute;
+  left: 50%;
+  top: 58%;
+  transform: translate(-50%, -50%);
+  color: #8fb4ff;
+  filter: drop-shadow(0 10px 24px rgba(60, 100, 255, 0.4));
+}
+
+.tour-folder svg {
+  fill: rgba(59, 124, 246, 0.18);
+}
+
+.tour-file {
+  position: absolute;
+  left: 50%;
+  top: 58%;
+  padding: 6px 10px;
+  border-radius: 7px;
+  background: #f1f3ff;
+  color: #2a3a78;
+  font-size: 12px;
+  font-weight: 800;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+  animation: tour-file 2.8s cubic-bezier(0.5, 0, 0.3, 1) infinite;
+}
+
+.tour-file.f2 {
+  animation-delay: 1.4s;
+  --from-x: 90px;
+}
+
+@keyframes tour-file {
+  0% {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--from-x, -110px)), -130px) rotate(-14deg);
+  }
+  15% {
+    opacity: 1;
+  }
+  55% {
+    opacity: 1;
+    transform: translate(-50%, -40px) rotate(0deg) scale(1);
+  }
+  75%,
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -6px) scale(0.6);
+  }
+}
+
+/* 3. 만지기: 캐릭터 머리를 쓰다듬는 손과 떠오르는 하트 */
+.tour-touch {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: end center;
+}
+
+.tour-hero {
+  height: 236px;
+  margin-bottom: -6px;
+  object-fit: contain;
+  filter: drop-shadow(0 10px 20px rgba(0, 0, 0, 0.4));
+}
+
+.tour-hero-empty {
+  width: 120px;
+  display: grid;
+  place-items: center;
+  color: rgba(143, 180, 255, 0.6);
+}
+
+.tour-touch .tour-hero {
+  transform-origin: 50% 100%;
+  animation: tour-happy 2.6s ease-in-out infinite;
+}
+
+.tour-cursor {
+  position: absolute;
+  left: calc(50% + 6px);
+  top: 18px;
+  color: #fff;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.6));
+  animation: tour-pat 2.6s ease-in-out infinite;
+}
+
+.tour-cursor svg {
+  fill: rgba(255, 255, 255, 0.92);
+  stroke: #1b1b22;
+}
+
+.tour-heart {
+  position: absolute;
+  left: calc(50% + 40px);
+  top: 50px;
+  color: #ff7aa8;
+  opacity: 0;
+  animation: tour-heart 2.6s ease-out infinite;
+}
+
+.tour-heart svg {
+  fill: currentColor;
+}
+
+.tour-heart.h2 {
+  left: calc(50% - 46px);
+  top: 64px;
+  animation-delay: 0.5s;
+}
+
+@keyframes tour-pat {
+  0%,
+  100% {
+    transform: translate(26px, -10px);
+    opacity: 0;
+  }
+  15%,
+  85% {
+    opacity: 1;
+  }
+  30%,
+  60% {
+    transform: translate(0, 0);
+  }
+  45%,
+  75% {
+    transform: translate(-10px, 4px);
+  }
+}
+
+@keyframes tour-happy {
+  30%,
+  60% {
+    transform: rotate(0deg);
+  }
+  45%,
+  75% {
+    transform: rotate(-1.5deg) translateY(1px);
+  }
+}
+
+@keyframes tour-heart {
+  0%,
+  35% {
+    opacity: 0;
+    transform: translateY(0) scale(0.6);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-10px) scale(1);
+  }
+  90%,
+  100% {
+    opacity: 0;
+    transform: translateY(-40px) scale(1);
+  }
+}
+
+/* 4. 빠른 메뉴: 실제 메뉴(stage/quickMenu.css)를 본뜬 모양 */
+.tour-menu {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 22px;
+}
+
+.tour-menu .tour-hero {
+  height: 220px;
+}
+
+.tour-qm {
+  align-self: center;
+  width: 196px;
+  padding: 5px;
+  border-radius: 11px;
+  background: rgba(40, 40, 46, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.5);
+  font-size: 12px;
+  transform-origin: 0 30%;
+  animation: tour-menu-in 0.45s 0.15s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+}
+
+.tour-qm .row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: 6px;
+  color: #e6e6ea;
+}
+
+.tour-qm .row.open {
+  background: var(--accent);
+  color: white;
+  font-weight: 600;
+}
+
+.tour-qm .row.quit {
+  color: #ff8a84;
+}
+
+.tour-qm .sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.tour-qm .sw {
+  width: 24px;
+  height: 14px;
+  border-radius: 999px;
+  background: #4a4a52;
+  position: relative;
+}
+
+.tour-qm .sw.on {
+  background: var(--accent);
+}
+
+.tour-qm .sw::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: white;
+}
+
+.tour-qm .sw.on::after {
+  left: 12px;
+}
+
+.tour-qm .sizes {
+  display: flex;
+  gap: 1px;
+  padding: 2px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.tour-qm .sizes i {
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-style: normal;
+  font-size: 10.5px;
+  color: #a7a7b0;
+}
+
+.tour-qm .sizes i.on {
+  background: #4a4a54;
+  color: white;
+}
+
+@keyframes tour-menu-in {
+  from {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tour-icon,
+  .tour-ring,
+  .tour-spark,
+  .tour-file,
+  .tour-touch .tour-hero,
+  .tour-cursor,
+  .tour-heart {
+    animation: none;
+  }
+}
+
+/* 일반 설정의 업데이트 줄: 상태 아이콘 색으로 한눈에 (확인 중·최신·새 버전·문제) */
+.update-row {
+  align-items: center;
+}
+
+.update-icon {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--muted);
+  transition:
+    background 0.2s,
+    color 0.2s;
+}
+
+.update-icon .spinner {
+  width: 14px;
+  height: 14px;
+  border-width: 2px;
+}
+
+.update-row[data-tone="ok"] .update-icon {
+  background: rgba(52, 199, 89, 0.14);
+  color: var(--ok);
+}
+
+.update-row[data-tone="new"] .update-icon {
+  background: var(--accent-soft);
+  color: #8fb4ff;
+}
+
+.update-row[data-tone="error"] .update-icon {
+  background: rgba(255, 95, 87, 0.14);
+  color: var(--danger);
+}
+
+.update-row[data-tone="new"] .hint {
+  color: #a9c4ff;
+}
+
+.update-row[data-tone="error"] .hint {
+  color: #ff9a94;
+}
+
+.update-current {
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--pill);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.update-bar {
+  height: 4px;
+  margin-top: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.update-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 0.2s ease;
+}
+
+.general .panel-row .button:disabled {
+  opacity: 0.55;
+}
+
+/* 새 버전이 있으면 일반 설정 버튼에 점 */
+.chip.has-update {
+  position: relative;
+}
+
+.chip.has-update::after {
+  content: "";
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px var(--bg);
+}

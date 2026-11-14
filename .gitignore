@@ -17,3 +17,6 @@ src-tauri/gen/schemas/
 .DS_Store
 Thumbs.db
 *.local
+
+# python
+__pycache__/

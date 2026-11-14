@@ -5,6 +5,7 @@ mod overlay;
 mod platforms;
 mod settings;
 mod tray;
+mod update;
 mod window;
 
 use std::path::PathBuf;
@@ -15,6 +16,9 @@ use tauri::Manager;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // 이미 켜져 있을 때 다시 실행하면(시작 메뉴·Finder) 캐릭터를 하나 더 띄우지 않고 설정 창을 연다.
+        // 메뉴 막대 아이콘이 없어서, 캐릭터가 없을 때(모델 없음·화면 밖) 앱으로 들어오는 길이 이것뿐이다.
+        .plugin(tauri_plugin_single_instance::init(|app, _arguments, _cwd| window::open_settings(app)))
         .plugin(tauri_plugin_dialog::init())
         // 로그인할 때 자동 시작 (Windows: 레지스트리 Run, macOS: LaunchAgent). 켜고 끄는 건 설정 창에서.
         .plugin(tauri_plugin_autostart::Builder::new().build())
@@ -43,14 +47,15 @@ pub fn run() {
             library::save_library,
             settings::get_settings,
             settings::select_model,
-            tray::register_motions,
+            update::check_for_update,
+            update::install_update,
+            update::open_update_page,
             launch_options,
             diag,
         ])
         .setup(|app| {
             let handle = app.handle().clone();
             app.manage(settings::SettingsState(Mutex::new(settings::load(&handle))));
-            app.manage(tray::MotionMenu::default());
 
             // `screenmate --import <폴더> [<폴더> ...]`: 시작할 때 폴더를 가져온다.
             for folder in import_arguments() {
@@ -64,16 +69,27 @@ pub fn run() {
             let window = app.get_webview_window("main").expect("main window is missing");
             overlay::install(&handle, &window)?;
             platforms::install(&handle);
-            tray::install(&handle)?;
             window.show()?;
-            // `--settings`: 시작하면서 설정 창을 연다 (개발·확인용)
-            if std::env::args().any(|argument| argument == "--settings") {
+            // 처음 켰거나(안내를 보여 준다) 모델이 하나도 없으면(화면에 캐릭터가 없다) 설정 창을 연다.
+            // `--settings`는 개발·확인용으로 늘 연다.
+            let onboarded = handle.state::<settings::SettingsState>().0.lock().unwrap().onboarded;
+            let no_models = models::load_registry(&handle).is_empty();
+            if !onboarded || no_models || std::env::args().any(|argument| argument == "--settings") {
                 window::open_settings(&handle);
             }
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            // macOS: 켜져 있는 앱의 Dock 아이콘을 누르거나 다시 열면 설정 창을 연다
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { .. } = event {
+                window::open_settings(app);
+            }
+            #[cfg(not(target_os = "macos"))]
+            let _ = (app, event);
+        });
 }
 
 /// 웹뷰 진단 로그를 표준 출력으로 (개발 중 성능 측정용)

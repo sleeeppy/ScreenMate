@@ -6,15 +6,18 @@
  *   - 고른 모델을 폴더 카드로 끌면 그 폴더로, 위쪽 "모델"로 끌면 폴더 밖으로 (잠깐 대고 있으면 맨 위로 열린다).
  *   - 오른쪽 클릭 메뉴: 이름 바꾸기, 폴더로 이동, 삭제 / 폴더 이름 바꾸기·삭제. Delete 키로 삭제, F2로 이름 바꾸기.
  * 오른쪽: 고른 모델 미리보기, "이 모델 쓰기", 캐릭터 설정(크기·커서 바라보기·다양한 동작·창 위에 올라가기·졸기).
- * 위쪽 "일반 설정": 로그인할 때 자동 시작, 데이터 폴더, 종료처럼 캐릭터와 상관없는 앱 설정.
+ * 위쪽 "일반 설정": 로그인할 때 자동 시작, 업데이트, 데이터 폴더, 종료처럼 캐릭터와 상관없는 앱 설정.
  * 설정은 Rust(settings.json), 폴더·이름은 Rust(models/library.json)가 갖고 있고 바뀌면 모든 창에 퍼진다.
  */
 import { getVersion } from "@tauri-apps/api/app";
 import appIcon from "../../src-tauri/icons/128x128.png";
+import appIconLarge from "../../src-tauri/icons/128x128@2x.png";
 import {
+  checkForUpdate,
   deleteModels,
   diag,
   getLibrary,
+  installUpdate,
   getSettings,
   importModels,
   listModels,
@@ -22,8 +25,10 @@ import {
   onLibraryChanged,
   onModelsChanged,
   onSettingsChanged,
+  onUpdateProgress,
   openDataFolder,
   openModelsFolder,
+  openUpdatePage,
   quitApp,
   saveLibrary,
   selectModel,
@@ -31,6 +36,7 @@ import {
   type Library,
   type ModelListing,
   type Settings,
+  type UpdateStatus,
 } from "../ipc";
 import {
   childFolders,
@@ -52,6 +58,7 @@ import {
 import "../platformFont";
 import "./settings.css";
 import { makeMissingThumbnails, needsThumbnail } from "./thumbnails";
+import { openTour, type Tour } from "./tour";
 
 const SIZES = [
   { label: "작게", value: 200 },
@@ -238,6 +245,7 @@ function render(): void {
   if (inspector) inspector.scrollTop = scroll.inspector;
   scroll.folder = state.folder;
   focusRename();
+  paintUpdate();
 }
 
 /** 오른쪽만 다시 그린다 (고른 모델이 바뀌었을 때) */
@@ -815,6 +823,146 @@ function chooseFolder(payload: Payload, at?: { x: number; y: number }): void {
 
 let lastMenuPoint = { x: 200, y: 200 };
 
+// ------------------------------------------------------------------ 업데이트
+
+type UpdatePhase = "checking" | "idle" | "downloading" | "installing" | "error";
+
+/** 확인 결과와 지금 단계. 확인·받기는 Rust가 따로 돌려서 그동안에도 창은 그대로 움직인다 */
+const updateState: { status: UpdateStatus | null; phase: UpdatePhase; fraction: number; message: string } = {
+  status: null,
+  phase: "checking",
+  fraction: 0,
+  message: "",
+};
+
+const UPDATE_ICONS = {
+  check: '<path d="m5.5 12.5 4 4 9-9"/>',
+  up: '<path d="M12 19V6M6.5 11.5 12 6l5.5 5.5"/>',
+  alert: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5v5.5M12 16.2v.3"/>',
+};
+
+/** 업데이트 줄: 아이콘(상태 색) · 무슨 상황인지 한 줄 · 버튼 하나 (상황마다 할 수 있는 일) · 받는 중이면 진행 막대 */
+function paintUpdate(): void {
+  const chip = root.querySelector("[data-action='general']");
+  chip?.classList.toggle("has-update", updateState.status?.available === true && updateState.phase === "idle");
+  const row = document.querySelector<HTMLElement>("#update-row");
+  if (!row) return;
+  const iconBox = row.querySelector<HTMLElement>(".update-icon")!;
+  const hint = row.querySelector<HTMLElement>("#update-hint")!;
+  const button = row.querySelector<HTMLButtonElement>("[data-general='update']")!;
+  const bar = row.querySelector<HTMLElement>(".update-bar")!;
+  const status = updateState.status;
+  const latest = status?.latest ? status.latest.replace(/^v/i, "v") : null;
+  let tone: "busy" | "ok" | "new" | "error" | "muted" = "muted";
+  let text = "";
+  let label = "다시 확인";
+  let primary = false;
+  let disabled = false;
+  switch (updateState.phase) {
+    case "checking":
+      tone = "busy";
+      text = "새 버전이 있는지 확인하고 있어요";
+      label = "확인 중";
+      disabled = true;
+      break;
+    case "downloading":
+      tone = "busy";
+      text = `${latest ?? "새 버전"} 받는 중 · ${Math.round(updateState.fraction * 100)}%`;
+      label = "받는 중";
+      disabled = true;
+      break;
+    case "installing":
+      tone = "busy";
+      text = "설치하고 있어요. 잠시 뒤 앱이 새 버전으로 다시 켜져요";
+      label = "설치 중";
+      disabled = true;
+      break;
+    case "error":
+      tone = "error";
+      text = updateState.message;
+      label = "다시 시도";
+      break;
+    default:
+      if (status?.available && status.installable) {
+        tone = "new";
+        text = `새 버전 ${latest}이 나왔어요`;
+        label = "지금 업데이트";
+        primary = true;
+      } else if (status?.available) {
+        tone = "new";
+        text = `새 버전 ${latest}이 나왔어요. ${status.reason ?? ""}`.trim();
+        label = "받으러 가기";
+        primary = true;
+      } else if (status?.latest) {
+        tone = "ok";
+        text = "최신 버전을 쓰고 있어요";
+      } else {
+        tone = "muted";
+        text = "아직 공개된 새 버전이 없어요";
+      }
+  }
+  row.dataset.tone = tone;
+  iconBox.innerHTML =
+    tone === "busy"
+      ? '<span class="spinner"></span>'
+      : `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">${
+          tone === "error" ? UPDATE_ICONS.alert : tone === "new" ? UPDATE_ICONS.up : UPDATE_ICONS.check
+        }</svg>`;
+  hint.textContent = text;
+  button.textContent = label;
+  button.disabled = disabled;
+  button.classList.toggle("primary", primary);
+  bar.hidden = updateState.phase !== "downloading";
+  bar.querySelector<HTMLElement>("span")!.style.width = `${Math.round(updateState.fraction * 100)}%`;
+}
+
+function updateError(error: unknown, fallback: string): string {
+  if (typeof error === "string" && error) return error;
+  if (error instanceof Error && error.message) return error.message;
+  return fallback;
+}
+
+async function refreshUpdate(): Promise<void> {
+  updateState.phase = "checking";
+  paintUpdate();
+  // 너무 빨리 끝나면 눌렀는지 모르니 잠깐은 "확인 중"을 보여 준다
+  const [result] = await Promise.allSettled([checkForUpdate(), new Promise((resolve) => window.setTimeout(resolve, 600))]);
+  if (result.status === "fulfilled") {
+    updateState.status = result.value;
+    updateState.phase = "idle";
+    updateState.message = "";
+  } else {
+    updateState.phase = "error";
+    updateState.message = updateError(result.reason, "업데이트를 확인하지 못했어요");
+  }
+  paintUpdate();
+}
+
+async function runUpdate(): Promise<void> {
+  const status = updateState.status;
+  if (updateState.phase !== "idle" && updateState.phase !== "error") return;
+  if (updateState.phase === "error" || !status?.available) {
+    await refreshUpdate();
+    return;
+  }
+  if (!status.installable) {
+    if (status.page) await openUpdatePage(status.page).catch((error) => toast(String(error)));
+    return;
+  }
+  updateState.phase = "downloading";
+  updateState.fraction = 0;
+  paintUpdate();
+  try {
+    await installUpdate();
+    updateState.phase = "installing";
+    paintUpdate();
+  } catch (error) {
+    updateState.phase = "error";
+    updateState.message = updateError(error, "설치하지 못했어요");
+    paintUpdate();
+  }
+}
+
 // ------------------------------------------------------------------ 일반 설정
 
 /** 캐릭터와 상관없는 앱 설정 (자동 시작·데이터 폴더·종료). 오른쪽 패널은 캐릭터 설정만 둔다. */
@@ -831,9 +979,22 @@ function openGeneral(): void {
       </div>
       <div class="panel">
         ${toggle("autostart", "로그인할 때 자동 시작", "컴퓨터를 켜면 캐릭터도 같이 나와요", settings.autostart)}
+        <div class="panel-row update-row" id="update-row">
+          <div class="update-icon"></div>
+          <div class="text">
+            <div class="label">업데이트 <span class="update-current">지금 v${escape(state.version)}</span></div>
+            <div class="hint" id="update-hint"></div>
+            <div class="update-bar" hidden><span></span></div>
+          </div>
+          <button class="button" data-general="update">다시 확인</button>
+        </div>
         <div class="panel-row">
           <div class="text"><div class="label">데이터 폴더</div><div class="hint">설정·가져온 모델·썸네일이 들어 있어요</div></div>
           <button class="button" data-general="data">${icon("folder", 14)}열기</button>
+        </div>
+        <div class="panel-row">
+          <div class="text"><div class="label">사용법</div><div class="hint">처음 켰을 때 본 안내를 다시 봐요</div></div>
+          <button class="button" data-general="tour">다시 보기</button>
         </div>
       </div>
       <div class="general-foot">
@@ -856,11 +1017,37 @@ function openGeneral(): void {
     const action = (clickEvent.target as Element).closest<HTMLElement>("[data-general]")?.dataset.general;
     if (action === "close" || clickEvent.target === overlay) close();
     else if (action === "data") void openDataFolder();
+    else if (action === "tour") {
+      close();
+      showTour();
+    } else if (action === "update") void runUpdate();
     else if (action === "quit") void quitApp();
   });
   window.addEventListener("keydown", onKeyDown, true);
   document.body.append(overlay);
+  paintUpdate();
   bind(overlay);
+}
+
+// ------------------------------------------------------------------ 처음 켰을 때 안내
+
+let tour: Tour | null = null;
+
+function showTour(): void {
+  if (tour) return;
+  tour = openTour({
+    appIcon: appIconLarge,
+    modelCount: () => state.models.length,
+    heroImage: () => {
+      const path = (activeModel() ?? state.models[0])?.thumbnail;
+      return path ? `${mateUrl(path)}?v=${state.thumbVersion}` : null;
+    },
+    importModels: () => void importModels(),
+    finish: () => {
+      tour = null;
+      if (state.settings && !state.settings.onboarded) void change({ onboarded: true });
+    },
+  });
 }
 
 // ------------------------------------------------------------------ 확인 창
@@ -1317,6 +1504,7 @@ async function refreshModels(): Promise<void> {
   state.selected = new Set([...state.selected].filter((id) => ids.has(id)));
   if (state.renaming?.kind === "model" && !ids.has(state.renaming.id)) state.renaming = null;
   if (!state.renaming) render();
+  tour?.refresh();
   ensureThumbnails();
 }
 
@@ -1354,6 +1542,14 @@ async function start(): Promise<void> {
   }
   bindOnce();
   render();
+  if (!settings.onboarded) showTour();
+  void onUpdateProgress((progress) => {
+    if (updateState.phase !== "downloading" && updateState.phase !== "installing") return;
+    updateState.phase = progress.phase === "install" ? "installing" : "downloading";
+    updateState.fraction = progress.fraction;
+    paintUpdate();
+  });
+  void refreshUpdate();
   // 트레이 등 다른 곳에서 바꾼 설정. 모델이 바뀌면 카드 배지까지 다시 그리고, 아니면 패널만 맞춘다.
   // 이 창이 보낸 요청이 아직 안 끝났으면 그 응답을 기다린다 (예전 값으로 튀지 않게).
   void onSettingsChanged((next) => {

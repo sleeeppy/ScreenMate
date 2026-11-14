@@ -27,6 +27,13 @@ pub struct Settings {
     /// 로그인할 때 자동 시작. 실제 값은 운영체제(Windows 레지스트리 Run, macOS LaunchAgent)에 있고 여기엔 비춰 둔다.
     #[serde(skip_deserializing)]
     pub autostart: bool,
+    /// 처음 켰을 때 보여 주는 안내(튜토리얼)를 봤다. 이 값이 없는 옛 설정 파일은 이미 쓰던 사람이라 본 것으로 친다.
+    #[serde(default = "already_onboarded")]
+    pub onboarded: bool,
+}
+
+fn already_onboarded() -> bool {
+    true
 }
 
 impl Default for Settings {
@@ -40,6 +47,7 @@ impl Default for Settings {
             gaze: true,
             monitor: None,
             autostart: false,
+            onboarded: false,
         }
     }
 }
@@ -54,6 +62,7 @@ pub struct SettingsPatch {
     pub sleep_minutes: Option<u32>,
     pub gaze: Option<bool>,
     pub autostart: Option<bool>,
+    pub onboarded: Option<bool>,
 }
 
 pub struct SettingsState(pub Mutex<Settings>);
@@ -118,6 +127,9 @@ pub fn update_settings(app: AppHandle, patch: SettingsPatch) -> Result<Settings,
         if let Some(gaze) = patch.gaze {
             settings.gaze = gaze;
         }
+        if let Some(onboarded) = patch.onboarded {
+            settings.onboarded = onboarded;
+        }
         if let Some(enabled) = patch.autostart {
             let launcher = app.autolaunch();
             let result = if enabled { launcher.enable() } else { launcher.disable() };
@@ -127,13 +139,11 @@ pub fn update_settings(app: AppHandle, patch: SettingsPatch) -> Result<Settings,
             settings.autostart = launcher.is_enabled().unwrap_or(false);
         }
     })?;
-    crate::tray::refresh(&app);
     Ok(settings)
 }
 
 #[tauri::command]
 pub fn select_model(app: AppHandle, id: String) -> Result<Settings, String> {
     let settings = update(&app, |settings| settings.model_id = Some(id))?;
-    crate::tray::refresh(&app);
     Ok(settings)
 }

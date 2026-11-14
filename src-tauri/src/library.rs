@@ -72,10 +72,6 @@ impl Library {
             }
         }
     }
-
-    pub fn title_of<'a>(&'a self, entry: &'a ModelEntry) -> &'a str {
-        self.titles.get(&entry.id).map(String::as_str).unwrap_or(&entry.name)
-    }
 }
 
 fn path<R: Runtime>(app: &AppHandle<R>) -> Result<std::path::PathBuf, String> {
@@ -106,7 +102,7 @@ pub fn get_library(app: AppHandle) -> Library {
     library
 }
 
-/// 설정 창에서 정리한 결과를 저장하고 다른 창(트레이 메뉴 포함)에 알린다.
+/// 설정 창에서 정리한 결과를 저장하고 다른 창에 알린다.
 #[tauri::command]
 pub fn save_library(app: AppHandle, mut library: Library) -> Result<Library, String> {
     for folder in &mut library.folders {
@@ -118,7 +114,6 @@ pub fn save_library(app: AppHandle, mut library: Library) -> Result<Library, Str
     library.prune(&crate::models::load_registry(&app));
     save(&app, &library)?;
     let _ = app.emit("library-changed", &library);
-    crate::tray::refresh(&app);
     Ok(library)
 }
 
@@ -159,7 +154,6 @@ mod tests {
         assert_eq!(library.placement.get("m2"), Some(&None));
         assert!(!library.placement.contains_key("deleted"));
         assert_eq!(library.titles.len(), 1);
-        assert_eq!(library.title_of(&entry("m1")), "린");
-        assert_eq!(library.title_of(&entry("m2")), "m2 이름");
+        assert_eq!(library.titles.get("m1").map(String::as_str), Some("린"), "빈 이름은 지운다");
     }
 }

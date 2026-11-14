@@ -7,8 +7,6 @@ import {
   getSettings,
   launchOptions,
   listModels,
-  onMotionPreview,
-  registerMotions,
   onModelsChanged,
   onReload,
   onSettingsChanged,
@@ -19,7 +17,6 @@ import {
 } from "./ipc";
 import type { LoadedCharacter } from "./mmd/loadModel";
 import { readOverrides, type ModelProfile } from "./mmd/profile";
-import { MOTIONS } from "./motion/clips/index.ts";
 import { Stage } from "./stage/engine";
 import "./platformFont";
 import "./styles.css";
@@ -50,7 +47,7 @@ async function boot(target: HTMLCanvasElement): Promise<void> {
   stage.onStatus = (status) => void broadcastStatus(status).catch(() => {});
   void onStatusRequest(() => void broadcastStatus(stage.status()).catch(() => {}));
 
-  // 기본은 자율 행동. 실행 옵션(--motion)이 있거나 트레이에서 고르면 그 모션만 미리보기한다.
+  // 기본은 자율 행동. 실행 옵션(--motion)이 있으면 그 모션만 미리보기한다.
   const options = await launchOptions();
   stage.benchIdle = options.benchIdle;
   stage.dropOnWindow = options.dropOnWindow;
@@ -58,20 +55,6 @@ async function boot(target: HTMLCanvasElement): Promise<void> {
   // 검증용: 캔버스 뒤 단색(마젠타). 캡처에서 이 색 영역만 잘라 다른 창이 섞이지 않게 한다.
   if (options.backdrop) target.style.background = "#ff00ff";
   if (options.motion) stage.playMotion(options.motion);
-  const syncMotionMenu = () =>
-    void registerMotions(
-      [
-        { name: "auto", label: "자동 (행동)" },
-        ...MOTIONS.map((motion) => ({ name: motion.name, label: motion.label })),
-      ],
-      stage.currentMotion,
-    );
-  syncMotionMenu();
-  void onMotionPreview((name) => {
-    stage.playMotion(name);
-    syncMotionMenu();
-  });
-  stage.onMotionChanged = syncMotionMenu;
 
   const selected = (): ModelListing | undefined =>
     models.find((entry) => entry.id === settings.modelId) ?? models[0];
@@ -81,7 +64,7 @@ async function boot(target: HTMLCanvasElement): Promise<void> {
     if (!entry) {
       stage.unload();
       loadedId = null;
-      setHint("트레이 아이콘 → 모델 가져오기… 로 MMD 모델 폴더를 선택하세요");
+      setHint("ScreenMate 창의 모델 가져오기로 MMD 모델 폴더를 고르면 여기에 캐릭터가 나타나요");
       return;
     }
     if (!force && entry.id === loadedId) {

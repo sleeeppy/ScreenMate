@@ -390,7 +390,6 @@ pub fn delete_models(app: AppHandle, ids: Vec<String>) -> Result<usize, String> 
     crate::ensure_selection(&app);
     let _ = app.emit("models-changed", ());
     let _ = app.emit("library-changed", &library);
-    crate::tray::refresh(&app);
     Ok(before - models.len())
 }
 
