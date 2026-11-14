@@ -6,7 +6,7 @@
  *   - 고른 모델을 폴더 카드로 끌면 그 폴더로, 위쪽 "모델"로 끌면 폴더 밖으로 (잠깐 대고 있으면 맨 위로 열린다).
  *   - 오른쪽 클릭 메뉴: 이름 바꾸기, 폴더로 이동, 삭제 / 폴더 이름 바꾸기·삭제. Delete 키로 삭제, F2로 이름 바꾸기.
  * 오른쪽: 고른 모델 미리보기, "이 모델 쓰기", 캐릭터 설정(크기·커서 바라보기·다양한 동작·창 위에 올라가기·졸기).
- * 위쪽 "일반 설정": 로그인할 때 자동 시작, 업데이트, 데이터 폴더, 종료처럼 캐릭터와 상관없는 앱 설정.
+ * 위쪽 "설정": 로그인할 때 자동 시작, 업데이트, 데이터 폴더, 종료처럼 캐릭터와 상관없는 앱 설정.
  * 설정은 Rust(settings.json), 폴더·이름은 Rust(models/library.json)가 갖고 있고 바뀌면 모든 창에 퍼진다.
  */
 import { getVersion } from "@tauri-apps/api/app";
@@ -222,7 +222,7 @@ function render(): void {
           <img src="${appIcon}" alt="" />ScreenMate <span class="version">${escape(state.version)}</span>
         </div>
         <div class="tools">
-          <button class="chip" data-action="general" title="일반 설정">${icon("gear", 14)}일반 설정</button>
+          <button class="chip" data-action="general" title="설정">${icon("gear", 14)}설정</button>
           <button class="chip" data-action="open-models" title="가져온 모델 폴더 열기">${icon("folder", 14)}</button>
           <button class="chip" data-action="import">${icon("plus", 14)}모델 가져오기</button>
         </div>
@@ -963,7 +963,7 @@ async function runUpdate(): Promise<void> {
   }
 }
 
-// ------------------------------------------------------------------ 일반 설정
+// ------------------------------------------------------------------ 설정
 
 /** 캐릭터와 상관없는 앱 설정 (자동 시작·데이터 폴더·종료). 오른쪽 패널은 캐릭터 설정만 둔다. */
 function openGeneral(): void {
@@ -972,9 +972,9 @@ function openGeneral(): void {
   const overlay = document.createElement("div");
   overlay.className = "dialog-backdrop";
   overlay.innerHTML = `
-    <div class="dialog general" role="dialog" aria-modal="true" aria-label="일반 설정">
+    <div class="dialog general" role="dialog" aria-modal="true" aria-label="설정">
       <div class="general-head">
-        <h3>일반 설정</h3>
+        <h3>설정</h3>
         <button class="icon-button small" data-general="close" title="닫기 (esc)">${icon("close", 15)}</button>
       </div>
       <div class="panel">

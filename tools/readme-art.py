@@ -33,11 +33,11 @@ SUB = {"light": (89, 99, 110), "dark": (145, 152, 161)}
 HEADINGS = {
     "features": "주요 기능",
     "quiet": "방해하지 않아요",
+    "inapp": "인앱",
     "settings": "설정",
     "models": "모델",
     "faq": "자주 묻는 질문",
     "install": "설치",
-    "usage": "사용법",
     "build": "직접 빌드하기",
     "credits": "모델과 크레딧",
 }

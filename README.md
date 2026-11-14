@@ -24,10 +24,9 @@
 
 <p align="center">
   <a href="#features">주요 기능</a> ·
-  <a href="#install">설치</a> ·
-  <a href="#usage">사용법</a> ·
-  <a href="#settings">설정</a> ·
+  <a href="#inapp">인앱</a> ·
   <a href="#models">모델</a> ·
+  <a href="#install">설치</a> ·
   <a href="#faq">자주 묻는 질문</a> ·
   <a href="#build">직접 빌드하기</a>
 </p>
@@ -41,51 +40,76 @@
 <a id="features"></a>
 <h3><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/headings/features-dark.png"><img src="docs/images/headings/features-light.png" alt="주요 기능" width="85" height="30"></picture></h3>
 
-가지고 있는 MMD 모델을 그대로 불러와, 바탕화면을 제 집처럼 돌아다니게 해요. 모션은 모두 앱이 직접 만들어요. 따로 준비할 건 모델 하나뿐이에요.
+<p align="center"><b>창 테두리에 앉혀요</b></p>
+<p align="center">
+  <img src="docs/images/sit.gif" width="720" alt="커서로 린의 엉덩이를 잡아 창 위로 끌어다 놓자 테두리에 걸터앉아 다리를 흔들고, 머리를 쓰다듬자 앉은 채로 웃는 모습">
+</p>
 
-<table>
-  <tr>
-    <td width="50%" valign="top">
-      <img src="docs/images/sit.gif" width="100%" alt="커서로 린의 엉덩이를 잡아 창 위로 끌어다 놓자 테두리에 걸터앉아 다리를 흔들고, 머리를 쓰다듬자 앉은 채로 웃는 모습"><br>
-      <b>창 테두리에 앉혀요</b><br>
-      엉덩이를 잡아 창 테두리에 대고 놓으면 그대로 걸터앉아 다리를 흔들어요. 창을 옮기면 같이 따라오고, 쓰다듬으면 앉은 채로 웃어요.
-    </td>
-    <td width="50%" valign="top">
-      <img src="docs/images/hang.gif" width="100%" alt="렌이 머리를 잡힌 채 좌우로 크게 흔들리는 모습"><br>
-      <b>잡아서 던질 수 있어요</b><br>
-      잡힌 곳에 매달려 흔들리고, 오래 들고 있거나 세게 흔들면 버둥거려요. 놓으면 그 속도 그대로 날아가 착지해요.
-    </td>
-  </tr>
-  <tr>
-    <td width="50%" valign="top">
-      <img src="docs/images/doze.gif" width="100%" alt="미쿠가 창 테두리에 걸터앉아 고개를 숙이고 조는 모습"><br>
-      <b>가만두면 꾸벅꾸벅 졸아요</b><br>
-      한동안 아무것도 안 하면 그 자리에 앉아 졸아요. 커서가 다가오거나 누르면 깨고, 몸을 찌르면 놀라요.
-    </td>
-    <td width="50%" valign="top">
-      <img src="docs/images/quickmenu.png" width="100%" alt="미쿠 옆에 열린 빠른 메뉴. ScreenMate 열기, 커서 바라보기, 다양한 동작, 창 위에 올라가기, 크기, 종료"><br>
-      <b>우클릭하면 빠른 메뉴</b><br>
-      캐릭터를 오른쪽 클릭하면 바로 옆에 작은 메뉴가 떠요. 자주 바꾸는 설정과 크기, 앱 열기가 한곳에 있어요.
-    </td>
-  </tr>
-</table>
+<br>
 
-그 밖에도 커서가 다가오면 **눈과 고개로 따라보고**, 닿을 만한 창이 있으면 **폴짝 뛰어올라** 위를 걷다가 끝에서 뛰어내려요. 가끔은 **화면 밖으로 걸어 나갔다가 옆이나 아래에서 크게 빼꼼** 엿보고 돌아와요.
+<p align="center"><b>잡아서 던져요</b></p>
+<p align="center">
+  <img src="docs/images/hang.gif" width="720" alt="렌이 머리를 잡힌 채 좌우로 크게 흔들리는 모습">
+</p>
+
+<br>
+
+<p align="center"><b>가만두면 졸아요</b></p>
+<p align="center">
+  <img src="docs/images/doze.gif" width="720" alt="미쿠가 창 테두리에 걸터앉아 고개를 숙이고 조는 모습">
+</p>
 
 <br>
 
 <h3><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/headings/quiet-dark.png"><img src="docs/images/headings/quiet-light.png" alt="방해하지 않아요" width="142" height="30"></picture></h3>
 
-<table>
-  <tr>
-    <td width="50%" valign="top"><b>클릭은 그대로 통과</b><br>캐릭터가 그려진 픽셀 위에서만 마우스를 받아요. 바로 옆 빈 곳은 아래 창이 받아요.</td>
-    <td width="50%" valign="top"><b>전체화면이면 숨어요</b><br>게임·영상을 전체화면으로 켜면 사라지고, 그리기와 물리도 멈춰요.</td>
-  </tr>
-  <tr>
-    <td width="50%" valign="top"><b>모니터를 넘나들어요</b><br>끌거나 던져서 옆 모니터로 보내고, 마지막에 있던 모니터에서 다시 시작해요.</td>
-    <td width="50%" valign="top"><b>화면을 보지 않아요</b><br>창 위치와 크기만 읽어요. 화면 기록 권한도 필요 없어요.</td>
-  </tr>
-</table>
+- 캐릭터가 그려진 곳에서만 클릭을 받고, 나머지는 아래 창으로 그대로 통과해요.
+- 전체화면 게임·영상이 뜨면 숨어서 그리기와 물리를 멈춰요.
+- 끌거나 던져서 옆 모니터로 보낼 수 있어요.
+- 창 위치와 크기만 읽고, 화면 내용은 보지 않아요. 권한도 필요 없어요.
+
+---
+
+<a id="inapp"></a>
+<h3><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/headings/inapp-dark.png"><img src="docs/images/headings/inapp-light.png" alt="인앱" width="42" height="30"></picture></h3>
+
+<p align="center"><b>모델 보관함</b></p>
+<p align="center">
+  <img src="docs/images/app-library.png" width="800" alt="ScreenMate 창. 왼쪽에 카가미네 린·렌·하츠네 미쿠 폴더 카드가 모자이크로, 오른쪽에 쓰고 있는 린 미리보기와 캐릭터 설정">
+</p>
+
+<p align="center"><b>모델 가져오기</b></p>
+<p align="center">
+  <img src="docs/images/app-import.png" width="800" alt="모델 가져오기 안내. .pmx·.pmd가 든 폴더를 고르면 보관함에 들어온다는 설명과 더 가져오기 버튼">
+</p>
+
+<p align="center"><b>캐릭터 옵션</b></p>
+<p align="center">
+  <img src="docs/images/app-options.png" width="800" alt="카가미네 린 폴더 안 모델 카드와 오른쪽 옵션. 크기, 커서 바라보기, 다양한 동작, 창 위에 올라가기, 입력이 없으면 졸기">
+</p>
+
+<p align="center"><b>설정</b></p>
+<p align="center">
+  <img src="docs/images/app-general.png" width="800" alt="설정 창. 로그인할 때 자동 시작, 업데이트, 데이터 폴더, 사용법, 종료">
+</p>
+
+<p align="center"><b>우클릭 빠른 메뉴</b></p>
+<p align="center">
+  <img src="docs/images/quickmenu.png" width="600" alt="미쿠 옆에 열린 빠른 메뉴. ScreenMate 열기, 커서 바라보기, 다양한 동작, 창 위에 올라가기, 크기, 종료">
+</p>
+
+---
+
+<a id="models"></a>
+<h3><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/headings/models-dark.png"><img src="docs/images/headings/models-light.png" alt="모델" width="42" height="30"></picture></h3>
+
+<p align="center">
+  <img src="docs/images/models.png" width="760" alt="린, 렌, 미쿠 모델 일곱 명이 나란히 선 모습">
+</p>
+
+- 가지고 있는 `.pmx`·`.pmd` 모델을 변환 없이 그대로 써요.
+- 키, 팔 각도, 다리 길이를 모델마다 재서 같은 모션이 어느 모델에서나 자연스러워요.
+- 모델에 든 MMD 물리로 머리카락과 치마가 흔들려요.
 
 ---
 
@@ -97,8 +121,8 @@
 | macOS 12 이상 | [ScreenMate-macos-universal.dmg](https://github.com/sleeeppy/screenmate/releases/latest/download/ScreenMate-macos-universal.dmg) | 애플 실리콘·인텔 모두 |
 | Windows 10·11 | [ScreenMate-windows-setup.exe](https://github.com/sleeeppy/screenmate/releases/latest/download/ScreenMate-windows-setup.exe) | 관리자 권한 필요 없음 |
 
-1. **설치하고 켜요.** ScreenMate 창과 함께 사용법 안내가 떠요. 설치 파일에는 모델이 없어서 처음엔 바탕화면이 비어 있어요.
-2. **모델을 가져와요.** 창 오른쪽 위 **모델 가져오기**에서 `.pmx`·`.pmd`가 든 폴더를 고르면 바로 캐릭터가 나타나요.
+1. **설치하고 켜요.** ScreenMate 창과 함께 사용법 안내가 떠요.
+2. **모델을 가져와요.** 오른쪽 위 **모델 가져오기**에서 `.pmx`·`.pmd`가 든 폴더를 고르면 바로 캐릭터가 나타나요.
 3. **끝!** 그다음부터는 로그인할 때 같이 켜지고, 새 버전도 앱 안에서 받아요.
 
 <details>
@@ -112,49 +136,6 @@
 
 </details>
 
-<a id="usage"></a>
-<h3><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/headings/usage-dark.png"><img src="docs/images/headings/usage-light.png" alt="사용법" width="61" height="30"></picture></h3>
-
-| 하고 싶은 것 | 방법 |
-|---|---|
-| 옮기기 · 던지기 | 캐릭터를 끌었다 놓기 |
-| 쓰다듬기 · 찌르기 | 머리 · 몸을 누르기 |
-| 빠른 메뉴 | 캐릭터를 오른쪽 클릭 |
-| 설정 창 열기 | 빠른 메뉴의 **ScreenMate 열기**, 또는 앱 다시 실행 · Dock 아이콘 |
-| 모델 바꾸기 | 설정 창에서 모델을 두 번 누르기 |
-| 끄기 | 빠른 메뉴나 일반 설정의 **종료** |
-
-캐릭터가 화면 밖에 있어 안 보일 때도 앱을 다시 실행하면 돼요. 캐릭터가 하나 더 생기지 않고 설정 창이 열려요.
-
----
-
-<a id="settings"></a>
-<h3><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/headings/settings-dark.png"><img src="docs/images/headings/settings-light.png" alt="설정" width="42" height="30"></picture></h3>
-
-<p align="center">
-  <img src="docs/images/settings.png" width="760" alt="설정 창. 왼쪽에 카가미네 린·렌·하츠네 미쿠 폴더 카드, 오른쪽에 고른 모델 미리보기와 캐릭터 설정">
-</p>
-
-- **모델 보관함**: 가져온 모델이 캐릭터별 폴더로 정리돼요. 끌어서 폴더를 옮기고, F2로 이름을 바꾸고, Delete로 지워요.
-- **캐릭터 설정**: 크기(160~440px), 커서 바라보기, 다양한 동작, 창 위에 올라가기, 입력이 없을 때 졸기(끄기·5·10·30분).
-- **일반 설정**: 로그인할 때 자동 시작, 업데이트, 데이터 폴더, 사용법 다시 보기.
-- **업데이트**: 새 버전이 나오면 일반 설정 버튼에 파란 점이 떠요. **지금 업데이트**를 누르면 받아서 다시 켜져요.
-
----
-
-<a id="models"></a>
-<h3><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/headings/models-dark.png"><img src="docs/images/headings/models-light.png" alt="모델" width="42" height="30"></picture></h3>
-
-<p align="center">
-  <img src="docs/images/models.png" width="760" alt="린, 렌, 미쿠 모델 일곱 명이 나란히 선 모습">
-</p>
-
-`.pmx`·`.pmd` 모델을 변환 없이 그대로 써요. 폴더를 고르면 안의 모델이 모두 등록되고, 썸네일과 옷 색으로 칠한 카드가 만들어져요.
-
-- **모델마다 자동으로 맞춰요**: 키, 팔 기본 각도, 다리 길이를 재서 같은 모션이 어느 모델에서나 자연스럽게 보여요. 표정 모프 이름이 달라도 알아서 찾아요.
-- **물리도 그대로**: 모델에 든 MMD 물리(Bullet)로 머리카락과 치마가 흔들려요.
-- **깨진 파일 이름은 되돌려요**: 일본어 zip을 한국어 Windows에서 풀어 `떮돶깏깛_DIVA븮릣뭶.pmd`처럼 깨진 이름을 `鏡音リン_DIVA風水着.pmd`로 고쳐 가져와요.
-
 ---
 
 <a id="faq"></a>
@@ -164,15 +145,15 @@
 <summary><b>캐릭터가 창 위에 안 올라가요</b></summary>
 <br>
 
-설정의 **창 위에 올라가기**가 켜져 있는지 확인하세요. 머리 위 공간이 키보다 좁은 창(화면 맨 위에 붙은 창, 최대화한 창), 폭이 좁은 창, 앞 창에 가려진 테두리는 밟지 않아요.
+옵션의 **창 위에 올라가기**가 켜져 있는지 확인하세요. 머리 위 공간이 키보다 좁은 창(화면 맨 위에 붙은 창, 최대화한 창), 폭이 좁은 창, 앞 창에 가려진 테두리는 밟지 않아요.
 
 </details>
 
 <details>
-<summary><b>게임을 켰더니 캐릭터가 사라졌어요</b></summary>
+<summary><b>캐릭터가 안 보여요</b></summary>
 <br>
 
-전체화면 앱이 떠 있으면 일부러 숨어요. 전체화면을 끄면 멈췄던 자리에서 다시 움직여요.
+전체화면 앱이 떠 있으면 일부러 숨어요. 화면 밖에 나가 있을 때는 앱을 다시 실행하면 캐릭터가 하나 더 생기지 않고 ScreenMate 창이 열려요.
 
 </details>
 
@@ -183,7 +164,7 @@
 - macOS: `~/Library/Application Support/dev.sleeeppy.screenmate`
 - Windows: `%APPDATA%\dev.sleeeppy.screenmate`
 
-설정(`settings.json`), 가져온 모델 사본(`models/`), 모델별 보정값(`profiles/`), 썸네일(`thumbnails/`)이 들어 있어요. 보정값은 `profiles/<모델 id>.json`을 고쳐 직접 바꿀 수 있어요.
+설정(`settings.json`), 가져온 모델 사본(`models/`), 모델별 보정값(`profiles/`), 썸네일(`thumbnails/`)이 들어 있어요.
 
 </details>
 
@@ -191,7 +172,7 @@
 <summary><b>완전히 지우고 싶어요</b></summary>
 <br>
 
-일반 설정에서 **로그인할 때 자동 시작**을 끄고 **종료**한 뒤, 앱과 위의 데이터 폴더를 지우세요.
+설정에서 **로그인할 때 자동 시작**을 끄고 **종료**한 뒤, 앱과 위의 데이터 폴더를 지우세요.
 
 </details>
 
@@ -222,7 +203,7 @@ npx tauri build         # 설치 파일 (macOS .app·.dmg, Windows .exe)
 | `src/mmd/` | 모델 불러오기, 자동 보정, 표정 별칭, 물리 |
 | `src/motion/` | 코드로 쓰는 모션(DSL)과 절차적 레이어 (숨쉬기, 시선, 깜빡임) |
 | `src/behavior/` | 행동 상태 머신, 물리, 창 발판 |
-| `src/settings/` | 설정 창, 모델 보관함, 썸네일, 처음 켰을 때 안내 |
+| `src/settings/` | ScreenMate 창, 모델 보관함, 썸네일, 처음 켰을 때 안내 |
 | `tools/` | VMD 내보내기, 설치 파일·README 그림 |
 | `docs/PLAN.md` | 설계와 진행 기록 |
 
@@ -242,19 +223,7 @@ npx tauri dev -- -- --import "$PWD/models/Sour式鏡音リン・レンVer.2.01" 
 
 ---
 
-<h3><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/headings/credits-dark.png"><img src="docs/images/headings/credits-light.png" alt="모델과 크레딧" width="123" height="30"></picture></h3>
-
-README의 그림과 `models/`의 모델은 아래 제작자분들의 작품이에요. 이용 약관은 각 모델 폴더의 readme를 따르고, 상업적으로 이용할 수 없어요.
-
-| 모델 | 제작 |
-|---|---|
-| Sour式 初音ミク · 鏡音リン · 鏡音レン | Sour暄 |
-| YYB式 鏡音レン, YYB Hatsune Miku | YYB |
-| DIVA風水着セット | ブライアン成田 |
-| もにた式 初音ミク · 鏡音レン | もにた |
-| Miwashiba式 鏡音リン · 鏡音レン | Miwashiba |
-| 鏡音レン (gasl) | gasl (VRoid Hub의 VRM을 이 앱용으로 PMX 변환) |
-
-初音ミク, 鏡音リン・レン © Crypton Future Media, INC. [piapro](https://piapro.net) — [피아프로 캐릭터 라이선스](https://piapro.jp/license/character_guideline)를 따릅니다.
-
-<p align="center"><sub>모델 렌더링은 <a href="https://github.com/noname0310/babylon-mmd">babylon-mmd</a>, 앱 껍데기는 <a href="https://tauri.app">Tauri 2</a>로 만들었어요.</sub></p>
+<p align="center">
+  <a href="docs/CREDITS.md"><b>모델과 크레딧</b></a><br>
+  <sub>初音ミク, 鏡音リン・レン © Crypton Future Media, INC. · 모델은 각 제작자분들의 작품이에요.</sub>
+</p>
