@@ -1,10 +1,5 @@
 <p align="center">
-  <img src="docs/images/icon.png" width="128" alt="ScreenMate 아이콘">
-</p>
-<h1 align="center">ScreenMate</h1>
-
-<p align="center">
-  <b>바탕화면 위에서 살아 움직이는 나의 MMD 캐릭터 친구들</b><br>
+  <img src="docs/images/cover.png" width="880" alt="ScreenMate — 바탕화면 위에서 살아 움직이는 나의 MMD 캐릭터 친구들. 창 위에 걸터앉은 린과 그 옆에 선 렌, 미쿠">
 </p>
 
 <p align="center">
