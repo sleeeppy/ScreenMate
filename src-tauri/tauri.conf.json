@@ -73,6 +73,7 @@
     },
     "macOS": {
       "minimumSystemVersion": "12.0",
+      "signingIdentity": "-",
       "dmg": {
         "background": "installer/dmg-background.png",
         "windowSize": {
