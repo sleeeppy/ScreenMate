@@ -50,6 +50,7 @@ pub fn run() {
             settings::get_settings,
             settings::select_model,
             update::check_for_update,
+            update::fetch_release_notes,
             update::install_update,
             update::open_update_page,
             launch_options,
@@ -72,11 +73,17 @@ pub fn run() {
             overlay::install(&handle, &window)?;
             platforms::install(&handle);
             window.show()?;
-            // 처음 켰거나(안내를 보여 준다) 모델이 하나도 없으면(화면에 캐릭터가 없다) 설정 창을 연다.
+            // 처음 켰거나(안내), 방금 업데이트됐거나(패치노트), 모델이 하나도 없으면(화면에 캐릭터가 없다) 설정 창을 연다.
             // `--settings`는 개발·확인용으로 늘 연다.
-            let onboarded = handle.state::<settings::SettingsState>().0.lock().unwrap().onboarded;
+            let current_ver = handle.package_info().version.to_string();
+            let (onboarded, updated) = {
+                let state = handle.state::<settings::SettingsState>();
+                let s = state.0.lock().unwrap();
+                let updated = s.seen_version.as_deref().is_some_and(|seen| update::is_newer(&current_ver, seen));
+                (s.onboarded, updated)
+            };
             let no_models = models::load_registry(&handle).is_empty();
-            if !onboarded || no_models || std::env::args().any(|argument| argument == "--settings") {
+            if !onboarded || updated || no_models || std::env::args().any(|argument| argument == "--settings") {
                 window::open_settings(&handle);
             }
             Ok(())

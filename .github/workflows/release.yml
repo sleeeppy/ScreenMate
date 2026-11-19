@@ -98,21 +98,51 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: false
+
       - uses: actions/download-artifact@v4
         with:
           pattern: ScreenMate-*
           path: bundle
           merge-multiple: true
 
+      # annotated tag에 본문(패치노트)이 있으면 그대로 쓰고, 없으면 이전 v* 태그 이후 커밋 제목을 모은다
+      - name: Build release notes
+        run: |
+          tag_body=$(git for-each-ref --format='%(contents:body)' "refs/tags/${GITHUB_REF_NAME}")
+          {
+            if [ -n "$(printf '%s' "$tag_body" | tr -d '[:space:]')" ]; then
+              printf '%s\n\n' "$tag_body"
+            else
+              prev=$(git tag --list 'v*' --sort=-v:refname | grep -Fxv "${GITHUB_REF_NAME}" | head -n 1 || true)
+              if [ -n "$prev" ]; then
+                changes=$(git log --no-merges --pretty=format:'- %s' "${prev}..${GITHUB_REF_NAME}" | grep -Ev '^- [0-9]+\.[0-9]+\.[0-9]+' || true)
+              else
+                changes=$(git log --no-merges -n 15 --pretty=format:'- %s' "${GITHUB_REF_NAME}" || true)
+              fi
+              if [ -n "$changes" ]; then
+                echo "## 바뀐 내용"
+                echo ""
+                echo "$changes"
+                echo ""
+              fi
+            fi
+            cat <<EOF
+          ## 내려받기
+
+          - **macOS** (애플 실리콘·인텔): [ScreenMate-macos-universal.dmg](https://github.com/sleeeppy/screenmate/releases/download/${GITHUB_REF_NAME}/ScreenMate-macos-universal.dmg)
+          - **Windows** 10·11: [ScreenMate-windows-setup.exe](https://github.com/sleeeppy/screenmate/releases/download/${GITHUB_REF_NAME}/ScreenMate-windows-setup.exe)
+
+          설치 파일에는 모델이 들어 있지 않아요. 앱을 켜면 나오는 안내를 따라 가지고 있는 MMD 모델(.pmx·.pmd) 폴더를 가져오세요.
+          서명하지 않은 앱이라 처음 열 때 경고가 뜰 수 있어요. 여는 방법은 [README의 설치](https://github.com/sleeeppy/screenmate#install)를 보세요.
+          EOF
+          } > release-notes.md
+
       - uses: softprops/action-gh-release@v2
         with:
           files: bundle/*
+          body_path: release-notes.md
           generate_release_notes: true
-          body: |
-            ## 내려받기
-
-            - **macOS** (애플 실리콘·인텔): [ScreenMate-macos-universal.dmg](https://github.com/sleeeppy/screenmate/releases/download/${{ github.ref_name }}/ScreenMate-macos-universal.dmg)
-            - **Windows** 10·11: [ScreenMate-windows-setup.exe](https://github.com/sleeeppy/screenmate/releases/download/${{ github.ref_name }}/ScreenMate-windows-setup.exe)
-
-            설치 파일에는 모델이 들어 있지 않아요. 앱을 켜면 나오는 안내를 따라 가지고 있는 MMD 모델(.pmx·.pmd) 폴더를 가져오세요.
-            서명하지 않은 앱이라 처음 열 때 경고가 뜰 수 있어요. 여는 방법은 [README의 설치](https://github.com/sleeeppy/screenmate#install)를 보세요.

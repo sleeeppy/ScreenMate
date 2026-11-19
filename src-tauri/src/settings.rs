@@ -30,6 +30,9 @@ pub struct Settings {
     /// 처음 켰을 때 보여 주는 안내(튜토리얼)를 봤다. 이 값이 없는 옛 설정 파일은 이미 쓰던 사람이라 본 것으로 친다.
     #[serde(default = "already_onboarded")]
     pub onboarded: bool,
+    /// 마지막으로 실행·확인한 앱 버전. 현재 버전이 이 값보다 높으면 업데이트 직후로 보고 패치노트를 띄운다.
+    #[serde(default)]
+    pub seen_version: Option<String>,
 }
 
 fn already_onboarded() -> bool {
@@ -48,6 +51,7 @@ impl Default for Settings {
             monitor: None,
             autostart: false,
             onboarded: false,
+            seen_version: None,
         }
     }
 }
@@ -63,6 +67,7 @@ pub struct SettingsPatch {
     pub gaze: Option<bool>,
     pub autostart: Option<bool>,
     pub onboarded: Option<bool>,
+    pub seen_version: Option<String>,
 }
 
 pub struct SettingsState(pub Mutex<Settings>);
@@ -78,8 +83,19 @@ pub fn load<R: Runtime>(app: &AppHandle<R>) -> Settings {
         .and_then(|file| fs::read(file).ok())
         .and_then(|bytes| serde_json::from_slice(&bytes).ok())
         .unwrap_or_default();
+    let current = app.package_info().version.to_string();
+    let mut needs_save = false;
+    // 처음 설치했거나 seen_version이 없던 예전 설정 파일은 지금 버전을 기록해 두고,
+    // 다음 버전으로 업데이트됐을 때부터 패치노트가 뜨게 한다.
+    if settings.seen_version.is_none() {
+        settings.seen_version = Some(current);
+        needs_save = true;
+    }
     if first_run && !cfg!(debug_assertions) {
         let _ = app.autolaunch().enable();
+        needs_save = true;
+    }
+    if needs_save && (!first_run || !cfg!(debug_assertions)) {
         let _ = save(app, &settings);
     }
     settings.autostart = app.autolaunch().is_enabled().unwrap_or(false);
@@ -129,6 +145,9 @@ pub fn update_settings(app: AppHandle, patch: SettingsPatch) -> Result<Settings,
         }
         if let Some(onboarded) = patch.onboarded {
             settings.onboarded = onboarded;
+        }
+        if let Some(seen) = patch.seen_version {
+            settings.seen_version = Some(seen);
         }
         if let Some(enabled) = patch.autostart {
             let launcher = app.autolaunch();

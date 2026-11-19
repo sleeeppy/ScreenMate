@@ -78,6 +78,8 @@ export interface Settings {
   autostart: boolean;
   /** 처음 켰을 때 보여 주는 안내를 봤다 */
   onboarded: boolean;
+  /** 마지막으로 확인한 앱 버전 (더 높은 버전으로 켜지면 패치노트를 보여 준다) */
+  seenVersion: string | null;
 }
 
 /** 캐릭터 지금 상태 (메인 창 → 설정 창 아래 막대) */
@@ -203,6 +205,14 @@ export interface UpdateStatus {
   /** 설치할 수 없을 때 이유 */
   reason: string | null;
   page: string | null;
+  /** 최신 릴리스의 패치노트 (내려받기 안내를 뺀 본문) */
+  notes: string | null;
+}
+
+export interface ReleaseNotes {
+  version: string;
+  body: string;
+  page: string;
 }
 
 export interface UpdateProgress {
@@ -211,6 +221,8 @@ export interface UpdateProgress {
 }
 
 export const checkForUpdate = (): Promise<UpdateStatus> => invoke("check_for_update");
+export const fetchReleaseNotes = (version?: string): Promise<ReleaseNotes> =>
+  invoke("fetch_release_notes", { version: version ?? null });
 export const installUpdate = (): Promise<void> => invoke("install_update");
 export const openUpdatePage = (page: string): Promise<void> => invoke("open_update_page", { page });
 export const onUpdateProgress = (handler: (progress: UpdateProgress) => void): Promise<UnlistenFn> =>
