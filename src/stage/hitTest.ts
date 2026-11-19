@@ -22,6 +22,7 @@ export class HitTester {
   private pending = false;
   /** 빠른 메뉴 자리 (CSS px): 캐릭터 픽셀처럼 입력을 받는다. "screen"이면 화면 전체 */
   private held: CssRect | "screen" | null = null;
+  private lastCursor: { x: number; y: number } | null = null;
 
   constructor(
     private readonly engine: Engine,
@@ -32,11 +33,16 @@ export class HitTester {
     window.addEventListener("pointerdown", (event) => {
       if (event.button === 0) this.pressed = true;
     });
+    window.addEventListener("pointermove", (event) => {
+      // 창 밖에서 버튼을 떼 pointerup을 놓쳤으면 즉시 푼다
+      if (this.pressed && (event.buttons & 1) === 0) this.pressed = false;
+    });
     const release = () => {
       this.pressed = false;
     };
     window.addEventListener("pointerup", release);
     window.addEventListener("pointercancel", release);
+    window.addEventListener("blur", release);
   }
 
   get capturing(): boolean {
@@ -45,6 +51,7 @@ export class HitTester {
 
   /** scene.render() 직후에 호출한다 (같은 프레임 버퍼를 읽어야 함). */
   sample(cursor: { x: number; y: number } | null): void {
+    this.lastCursor = cursor;
     if (this.pressed || this.pending || this.held === "screen") {
       return;
     }
@@ -71,6 +78,10 @@ export class HitTester {
       .readPixels(x, y, size, size, true, true)
       .then((buffer) => {
         this.pending = false;
+        // 비동기 readPixels 완료 사이에 메뉴가 열렸거나 커서가 메뉴 위로 갔으면 결과를 무시한다
+        if (this.held === "screen" || (this.held && this.lastCursor && contains(this.held, this.lastCursor))) {
+          return;
+        }
         if (maxAlpha(buffer) > HIT_ALPHA) {
           this.misses = 0;
           this.setIgnoring(false);
@@ -95,8 +106,10 @@ export class HitTester {
     }
   }
 
-  /** 모델 교체 등으로 캐릭터가 사라졌을 때 */
+  /** 모델 교체·전체화면 숨김 등으로 캐릭터가 사라졌을 때 */
   release(): void {
+    this.pressed = false;
+    this.held = null;
     this.misses = MISS_FRAMES;
     this.setIgnoring(true);
   }

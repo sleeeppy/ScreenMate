@@ -10,6 +10,7 @@ import {
   onModelsChanged,
   onReload,
   onSettingsChanged,
+  onStageChanged,
   saveProfile,
   stageInfo,
   type ModelListing,
@@ -99,9 +100,9 @@ async function boot(target: HTMLCanvasElement): Promise<void> {
     models = await listModels();
     void loadSelected(true);
   });
-  window.addEventListener("resize", async () => {
-    stage.updateInfo(await stageInfo());
-  });
+  const syncStage = async () => stage.updateInfo(await stageInfo());
+  window.addEventListener("resize", () => void syncStage());
+  void onStageChanged(() => void syncStage());
 
   await loadSelected();
 }

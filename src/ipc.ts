@@ -104,6 +104,9 @@ export const onReload = (handler: () => void): Promise<UnlistenFn> => listen("re
 
 export const stageInfo = (): Promise<StageInfo> => invoke("stage_info");
 
+/** 모니터가 빠져 다른 모니터로 옮겨졌을 때 (같은 해상도라 resize가 안 올 때도 알림) */
+export const onStageChanged = (handler: () => void): Promise<UnlistenFn> => listen("stage-changed", () => handler());
+
 /** 창 밖 한 점(지금 창 기준 CSS px)이 다른 모니터 위면 오버레이를 그 모니터로 옮긴다. 아니면 null. */
 export const transferMonitor = (x: number, y: number): Promise<MonitorTransfer | null> =>
   invoke("transfer_monitor", { x, y });
@@ -111,6 +114,9 @@ export const transferMonitor = (x: number, y: number): Promise<MonitorTransfer |
 /** 보이는 최상위 창 목록 (앞 → 뒤). 바뀔 때만 온다. */
 export const onWindows = (handler: (windows: WindowRect[]) => void): Promise<UnlistenFn> =>
   listen<WindowRect[]>("windows", (event) => handler(event.payload));
+
+/** 지금 보이는 창 목록 (시작 시 첫 `windows` 이벤트를 놓치지 않게 한 번 묻는다) */
+export const currentWindows = (): Promise<WindowRect[]> => invoke("current_windows");
 
 /** 전체화면 앱(게임·영상)이 떴다/사라졌다. 바뀔 때만 온다. */
 export const onFullscreen = (handler: (fullscreen: boolean) => void): Promise<UnlistenFn> =>

@@ -8,6 +8,7 @@ import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Scene } from "@babylonjs/core/scene";
 import { SdefInjector } from "babylon-mmd/esm/Loader/sdefInjector";
 import {
+  currentWindows,
   transferMonitor,
   diag,
   onCursor,
@@ -21,7 +22,7 @@ import {
 } from "../ipc";
 import { createMmdWorld, loadCharacter, type LoadedCharacter, type MmdWorld } from "../mmd/loadModel";
 import { Behavior, rotateCss, type Arena } from "../behavior/behavior.ts";
-import { attachPointer } from "../behavior/interaction";
+import { attachPointer, type PointerControl } from "../behavior/interaction";
 import { QuickMenu } from "./quickMenu";
 import { computeLedges, type Ledge, type WindowRect } from "../behavior/platforms.ts";
 import { idle, motionByName } from "../motion/clips/index.ts";
@@ -76,6 +77,7 @@ export class Stage {
   private readonly box: FollowBox;
   private readonly hit: HitTester;
   private readonly quickMenu: QuickMenu;
+  private readonly pointer: PointerControl;
   private readonly pacer = new FramePacer();
   private readonly space: StageSpace;
   private world: MmdWorld | null = null;
@@ -161,8 +163,12 @@ export class Stage {
     this.box = new FollowBox(canvas, () => this.engine.resize());
     this.hit = new HitTester(this.engine, canvas, this.box);
     const hit = this.hit;
+    const box = this.box;
     this.quickMenu = new QuickMenu({
-      capture: (area) => hit.hold(area),
+      capture: (area) => {
+        hit.hold(area);
+        box.setExtraInterest(area && area !== "screen" ? area : null);
+      },
       get capturing() {
         return hit.capturing;
       },
@@ -184,7 +190,7 @@ export class Stage {
       },
     }, Math.random, { variety: true });
     this.behavior.place(info.workArea.x + info.workArea.width / 2, this.arena());
-    attachPointer({
+    this.pointer = attachPointer({
       grab: (point, now) => {
         if (this.character) this.behavior.grab(point, now);
       },
@@ -202,10 +208,20 @@ export class Stage {
       },
     });
 
+    let windowsReceived = false;
     void onWindows((windows) => {
+      windowsReceived = true;
       this.windows = windows;
       this.updateLedges();
     });
+    // 앱 시작 시 첫 `windows` 이벤트가 리스너 등록 전에 지나갔을 수 있어 한 번 직접 읽어 온다
+    void currentWindows()
+      .then((windows) => {
+        if (windowsReceived) return;
+        this.windows = windows;
+        this.updateLedges();
+      })
+      .catch(() => {});
     void onCursor((event) => {
       this.cursor = event.near && !this.benchIdle && !this.hidden ? event : null;
       // 커서가 다가오는 것도 입력이다 (오래 입력이 없으면 졸고, 다가오면 깬다)
@@ -378,6 +394,8 @@ export class Stage {
     if (hidden) {
       this.hiddenSince = performance.now();
       this.cursor = null;
+      this.quickMenu.close();
+      this.pointer.cancel();
       // 숨어 있는 동안 클릭은 모두 아래 창으로
       this.hit.release();
     } else {
@@ -423,7 +441,7 @@ export class Stage {
     const character = this.character;
     if (!character) return 0;
     const legScale = character.calibration.legScale > 0 ? character.calibration.legScale : 1;
-    return WALK_SPEED_UNITS * legScale * (this.heightPx / character.calibration.headY);
+    return WALK_SPEED_UNITS * legScale * (this.baseHeight / character.calibration.headY);
   }
 
   private arena(): Arena {
@@ -585,6 +603,8 @@ export class Stage {
 
   unload(): void {
     this.loadToken += 1;
+    this.quickMenu.close();
+    this.pointer.cancel();
     this.character?.dispose();
     this.character = null;
     this.hit.release();

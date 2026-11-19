@@ -55,6 +55,8 @@ export class QuickMenu {
   private settings: Settings | null = null;
   private closing: number | null = null;
   private watching: number | null = null;
+  /** 비동기 open() 도중 다시 열리거나 닫히면 예전 호출을 버린다 (DOM 겹침·고아 방지) */
+  private openToken = 0;
 
   constructor(private readonly host: QuickMenuHost) {
     void onSettingsChanged((next) => {
@@ -79,12 +81,14 @@ export class QuickMenu {
 
   async open(point: { x: number; y: number }): Promise<void> {
     this.removeNow();
+    const token = ++this.openToken;
     this.host.capture("screen");
     try {
       this.settings = await getSettings();
     } catch {
       this.settings = null;
     }
+    if (token !== this.openToken) return;
     const element = document.createElement("div");
     element.className = "qm";
     element.setAttribute("role", "menu");
@@ -145,14 +149,20 @@ export class QuickMenu {
   }
 
   close(): void {
+    this.openToken += 1;
     const element = this.element;
-    if (!element || this.closing !== null) return;
+    if (!element) {
+      this.host.capture(null);
+      return;
+    }
+    if (this.closing !== null) return;
     element.classList.remove("qm-in");
     element.classList.add("qm-out");
     this.closing = window.setTimeout(() => this.removeNow(), CLOSE_MS);
   }
 
   private removeNow(): void {
+    this.openToken += 1;
     if (this.closing !== null) window.clearTimeout(this.closing);
     this.closing = null;
     if (this.watching !== null) window.clearTimeout(this.watching);

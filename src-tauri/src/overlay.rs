@@ -51,8 +51,9 @@ pub struct OverlayState {
     geometry: Mutex<Geometry>,
     interest: Mutex<Option<CssRect>>,
     /// 오버레이를 띄운 모니터 전체 (작업 영역 아님). 물리 px 왼쪽 위·크기와 배율.
-    /// 웹뷰가 거의 동시에 여러 번 옮겨 달라고 해도 한 번에 하나씩 처리하도록 이 잠금 안에서 옮긴다.
     monitor: Mutex<Option<(i32, i32, u32, u32, f64)>>,
+    /// 웹뷰가 거의 동시에 여러 번 옮겨 달라고 해도 한 번에 하나씩 처리하도록 직렬화한다.
+    transfer_lock: Mutex<()>,
 }
 
 impl OverlayState {
@@ -186,6 +187,7 @@ pub fn transfer_monitor(
     x: f64,
     y: f64,
 ) -> Result<Option<Transfer>, String> {
+    let _guard = state.transfer_lock.lock().unwrap();
     let geometry = *state.geometry.lock().unwrap();
     if geometry.scale <= 0.0 {
         return Ok(None);
@@ -202,12 +204,12 @@ pub fn transfer_monitor(
     move_to(&app, &window, &state, target).map_err(|error| error.to_string())?;
     let moved = *state.geometry.lock().unwrap();
     let (x, y) = desktop_to_css(&moved, desktop_x, desktop_y);
-    let info = stage_info(app, window, state)?;
+    let info = build_stage_info(&app, &window, &state, Some(target.scale))?;
     Ok(Some(Transfer { info, x, y }))
 }
 
 /// 모니터를 빼거나 해상도·배치가 바뀌어 지금 모니터가 그대로 없으면 기억한 모니터(없으면 주 모니터)로 다시 맞춘다.
-/// 창 목록 폴링 스레드에서 가끔 부른다. 웹뷰는 창 크기 변경(resize)으로 새 무대 정보를 받는다.
+/// 창 목록 폴링 스레드에서 가끔 부른다. 같은 해상도 모니터로 옮겨 resize 이벤트가 안 올 때도 대비해 `stage-changed`를 보낸다.
 pub fn check_monitor(app: &AppHandle) {
     let state = app.state::<Arc<OverlayState>>();
     let Some(current) = state.monitor() else {
@@ -228,10 +230,15 @@ pub fn check_monitor(app: &AppHandle) {
             return;
         };
         let state = handle.state::<Arc<OverlayState>>();
+        let _guard = state.transfer_lock.lock().unwrap();
         // 주 모니터로 돌아갈 때는 기억한 모니터를 지우지 않는다 (다시 꽂으면 그쪽에서 시작하게 fit_window만)
         let _ = monitors::fit_window(&window, &screen);
         *state.monitor.lock().unwrap() = Some(monitors::screen_key(&screen));
         refresh_geometry(&window, &state);
+        if cfg!(not(target_os = "macos")) {
+            state.geometry.lock().unwrap().scale = screen.scale;
+        }
+        let _ = handle.emit_to("main", "stage-changed", ());
     });
 }
 
@@ -404,15 +411,29 @@ pub fn stage_info(
     window: WebviewWindow,
     state: tauri::State<'_, Arc<OverlayState>>,
 ) -> Result<StageInfo, String> {
+    build_stage_info(&app, &window, &state, None)
+}
+
+fn build_stage_info(
+    app: &AppHandle,
+    window: &WebviewWindow,
+    state: &OverlayState,
+    scale_override: Option<f64>,
+) -> Result<StageInfo, String> {
     let (open_left, open_right) = state
         .monitor()
         .and_then(|key| {
-            let screens = monitors::screens(&app);
+            let screens = monitors::screens(app);
             let current = screens.iter().find(|screen| monitors::same_screen(screen, key))?.rect;
             Some(monitors::open_sides(&screens, &current))
         })
         .unwrap_or((false, false));
-    let scale = window.scale_factor().map_err(|error| error.to_string())?;
+    // Windows에서 배율이 다른 모니터로 옮긴 직후에는 WM_DPICHANGED 전이라 window.scale_factor()가 예전 값일 수 있다
+    let scale = if cfg!(not(target_os = "macos")) {
+        scale_override.unwrap_or(window.scale_factor().map_err(|error| error.to_string())?)
+    } else {
+        window.scale_factor().map_err(|error| error.to_string())?
+    };
     let position = window.outer_position().map_err(|error| error.to_string())?;
     let size = window.outer_size().map_err(|error| error.to_string())?;
     let monitor = window

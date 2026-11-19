@@ -27,6 +27,8 @@ const INTEREST_STEP = 24;
 export class FollowBox {
   rect: CssRect = { x: 0, y: 0, width: 1, height: 1 };
   private sentInterest: CssRect | null = null;
+  /** 빠른 메뉴 등 캐릭터와 떨어져 있어도 커서를 받아야 하는 추가 관심 영역 */
+  private extraInterest: CssRect | null = null;
   private appliedSize = "";
   private appliedTransform = "";
 
@@ -80,20 +82,33 @@ export class FollowBox {
     return x >= rect.x && y >= rect.y && x < rect.x + rect.width && y < rect.y + rect.height;
   }
 
-  private syncInterest(): void {
-    const interest: CssRect = {
-      x: this.rect.x - INTEREST_MARGIN,
-      y: this.rect.y - INTEREST_MARGIN,
-      width: this.rect.width + INTEREST_MARGIN * 2,
-      height: this.rect.height + INTEREST_MARGIN * 2,
-    };
+  /** 빠른 메뉴가 열려 있는 동안 캐릭터가 멀어져도 메뉴 위 커서 이벤트를 계속 받도록 관심 영역에 합친다 */
+  setExtraInterest(rect: CssRect | null): void {
+    this.extraInterest = rect;
+    this.syncInterest(true);
+  }
+
+  private syncInterest(force = false): void {
+    let left = this.rect.x - INTEREST_MARGIN;
+    let top = this.rect.y - INTEREST_MARGIN;
+    let right = this.rect.x + this.rect.width + INTEREST_MARGIN;
+    let bottom = this.rect.y + this.rect.height + INTEREST_MARGIN;
+    if (this.extraInterest) {
+      const pad = 24;
+      left = Math.min(left, this.extraInterest.x - pad);
+      top = Math.min(top, this.extraInterest.y - pad);
+      right = Math.max(right, this.extraInterest.x + this.extraInterest.width + pad);
+      bottom = Math.max(bottom, this.extraInterest.y + this.extraInterest.height + pad);
+    }
+    const interest: CssRect = { x: left, y: top, width: right - left, height: bottom - top };
     const sent = this.sentInterest;
     if (
+      !force &&
       sent &&
       Math.abs(sent.x - interest.x) < INTEREST_STEP &&
       Math.abs(sent.y - interest.y) < INTEREST_STEP &&
-      sent.width === interest.width &&
-      sent.height === interest.height
+      Math.abs(sent.width - interest.width) < INTEREST_STEP &&
+      Math.abs(sent.height - interest.height) < INTEREST_STEP
     ) {
       return;
     }

@@ -31,6 +31,7 @@ pub fn run() {
             overlay::transfer_monitor,
             platforms::set_platform_rate,
             platforms::fullscreen_state,
+            platforms::current_windows,
             models::list_models,
             models::save_model_cache,
             models::save_profile,

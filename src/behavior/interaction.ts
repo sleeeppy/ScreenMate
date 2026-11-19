@@ -14,13 +14,25 @@ export interface PointerHandlers {
   menu(point: Point): void;
 }
 
+export interface PointerControl {
+  /** 숨김·모델 언로드 등으로 진행 중인 끌기를 강제로 놓는다 */
+  cancel(): void;
+}
+
 /**
  * 캐릭터 위 마우스 입력. 클릭 통과가 꺼져 있을 때(캐릭터 픽셀 위)만 창이 이벤트를 받는다.
  * 창이 화면 전체라 끄는 동안 커서가 캐릭터를 벗어나도 이벤트가 계속 들어온다.
  */
-export function attachPointer(handlers: PointerHandlers): void {
+export function attachPointer(handlers: PointerHandlers): PointerControl {
   let start: (Point & { t: number }) | null = null;
   let dragging = false;
+
+  const cancel = (now = performance.now()) => {
+    if (!start) return;
+    if (dragging) handlers.release(now);
+    start = null;
+    dragging = false;
+  };
 
   window.addEventListener("pointerdown", (event) => {
     if (event.button !== 0) return;
@@ -30,6 +42,11 @@ export function attachPointer(handlers: PointerHandlers): void {
 
   window.addEventListener("pointermove", (event) => {
     if (!start) return;
+    // 창 밖·Alt+Tab 등에서 pointerup을 놓쳤으면 버튼이 이미 떨어져 있다
+    if ((event.buttons & 1) === 0) {
+      cancel(event.timeStamp);
+      return;
+    }
     const point = { x: event.clientX, y: event.clientY };
     if (!dragging && Math.hypot(point.x - start.x, point.y - start.y) >= DRAG_THRESHOLD_PX) {
       dragging = true;
@@ -50,6 +67,7 @@ export function attachPointer(handlers: PointerHandlers): void {
   };
   window.addEventListener("pointerup", finish);
   window.addEventListener("pointercancel", finish);
+  window.addEventListener("blur", () => cancel());
 
   // WebView 기본 우클릭 메뉴(뒤로·새로고침·검사) 대신 캐릭터 빠른 메뉴. 창은 캐릭터 픽셀 위에서만 입력을 받으므로
   // 여기 오는 우클릭은 캐릭터 위다. 끄는 중에는 띄우지 않는다.
@@ -60,4 +78,5 @@ export function attachPointer(handlers: PointerHandlers): void {
   // 끌 때 글자 선택·드래그 이미지가 생기지 않게
   window.addEventListener("dragstart", (event) => event.preventDefault());
   window.addEventListener("selectstart", (event) => event.preventDefault());
+  return { cancel: () => cancel() };
 }

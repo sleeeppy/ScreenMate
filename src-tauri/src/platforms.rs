@@ -9,7 +9,7 @@
 //! (33ms면 60fps 렌더에서 창 위치가 두 프레임에 한 번만 바뀌어 캐릭터가 계단식으로 끊겨 따라갔다.)
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -66,6 +66,8 @@ struct Scan {
 pub struct PlatformState {
     fast: AtomicBool,
     fullscreen: AtomicBool,
+    /// 마지막으로 수집한 창 목록 (웹뷰가 첫 이벤트를 놓쳐도 시작 시 바로 읽어갈 수 있게)
+    windows: Mutex<Vec<WindowRect>>,
 }
 
 pub fn install(app: &AppHandle) {
@@ -100,27 +102,19 @@ fn poll(app: AppHandle, state: Arc<PlatformState>) {
         let screen = overlay.monitor().map(|monitor| monitor_css(monitor, origin_x, origin_y, scale));
         let scan = native::scan();
 
-        let mut covered = false;
-        let mut decided = false;
-        let mut windows: Vec<WindowRect> = Vec::new();
+        let mut windows_with_topmost: Vec<(WindowRect, bool)> = Vec::new();
         for window in scan.windows {
             let topmost = window.topmost;
             let rect = to_css(window, origin_x, origin_y, scale);
             if rect.width < MIN_SIZE || rect.height < MIN_SIZE {
                 continue;
             }
-            // 맨 앞 창(항상 위 창은 건너뜀)이 모니터를 통째로 덮으면 전체화면
-            if !decided {
-                if screen.as_ref().is_some_and(|screen| covers(&rect, screen)) {
-                    covered = true;
-                    decided = true;
-                } else if !topmost {
-                    decided = true;
-                }
-            }
-            windows.push(rect);
+            windows_with_topmost.push((rect, topmost));
         }
+        let covered = screen.as_ref().is_some_and(|screen| is_covered(&windows_with_topmost, screen));
+        let windows: Vec<WindowRect> = windows_with_topmost.into_iter().map(|(rect, _)| rect).collect();
         if last.as_ref() != Some(&windows) {
+            *state.windows.lock().unwrap() = windows.clone();
             if app.emit_to("main", "windows", &windows).is_err() {
                 break;
             }
@@ -177,6 +171,31 @@ fn covers(window: &WindowRect, screen: &WindowRect) -> bool {
         && window.y + window.height >= screen.y + screen.height - COVER_SLACK
 }
 
+/// 창이 이 모니터 영역과 조금이라도 겹치는지 (다른 모니터에 떠 있는 창은 제외)
+fn overlaps(window: &WindowRect, screen: &WindowRect) -> bool {
+    window.x < screen.x + screen.width
+        && window.x + window.width > screen.x
+        && window.y < screen.y + screen.height
+        && window.y + window.height > screen.y
+}
+
+/// 이 모니터 위에서 가장 앞쪽 일반 창(항상 위 창 제외)이 모니터를 통째로 덮으면 전체화면.
+/// 다른 모니터에 있는 창이 포커스를 받아 Z 순서 맨 앞에 와도 이 모니터의 전체화면 판정이 풀리지 않게 한다.
+fn is_covered(windows: &[(WindowRect, bool)], screen: &WindowRect) -> bool {
+    for (rect, topmost) in windows {
+        if !overlaps(rect, screen) {
+            continue;
+        }
+        if covers(rect, screen) {
+            return true;
+        }
+        if !topmost {
+            return false;
+        }
+    }
+    false
+}
+
 /// 화면 좌표 → 오버레이 기준 CSS px. 오버레이 원점(`origin`)은 tauri의 물리 px다.
 fn to_css(window: NativeWindow, origin_x: i32, origin_y: i32, scale: f64) -> WindowRect {
     let (x, y, width, height) = if cfg!(target_os = "macos") {
@@ -207,6 +226,12 @@ pub fn is_fullscreen(app: &AppHandle) -> bool {
 #[tauri::command]
 pub fn fullscreen_state(state: tauri::State<'_, Arc<PlatformState>>) -> bool {
     state.fullscreen.load(Ordering::Relaxed)
+}
+
+/// 지금 보이는 창 목록 (웹뷰가 시작할 때 첫 `windows` 이벤트를 놓쳤을 때를 대비해 한 번 묻는다)
+#[tauri::command]
+pub fn current_windows(state: tauri::State<'_, Arc<PlatformState>>) -> Vec<WindowRect> {
+    state.windows.lock().unwrap().clone()
 }
 
 #[cfg(windows)]
@@ -372,5 +397,32 @@ mod native {
 
     pub fn scan() -> Scan {
         Scan { windows: Vec::new(), system_fullscreen: false, overlay_off_screen: false }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn rect(id: u64, x: f64, y: f64, width: f64, height: f64) -> WindowRect {
+        WindowRect { id, x, y, width, height }
+    }
+
+    #[test]
+    fn other_monitor_window_does_not_clear_fullscreen_on_current_monitor() {
+        let screen = rect(0, 0.0, 0.0, 1920.0, 1080.0);
+        let other_monitor = (rect(1, 1920.0, 100.0, 800.0, 600.0), false);
+        let fullscreen_game = (rect(2, 0.0, 0.0, 1920.0, 1080.0), false);
+        assert!(is_covered(&[other_monitor, fullscreen_game], &screen));
+    }
+
+    #[test]
+    fn normal_window_on_same_monitor_clears_fullscreen_but_topmost_does_not() {
+        let screen = rect(0, 0.0, 0.0, 1920.0, 1080.0);
+        let pip = (rect(1, 1500.0, 700.0, 320.0, 180.0), true);
+        let normal = (rect(2, 200.0, 200.0, 800.0, 600.0), false);
+        let fullscreen = (rect(3, 0.0, 0.0, 1920.0, 1080.0), false);
+        assert!(is_covered(&[pip, fullscreen.clone()], &screen));
+        assert!(!is_covered(&[normal, fullscreen], &screen));
     }
 }
