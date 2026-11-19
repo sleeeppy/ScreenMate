@@ -37,6 +37,8 @@ const TURN = -0.28;
 const ALPHA_CUTOFF = 12;
 
 let running: Promise<void> | null = null;
+/** 실행 중에 새 모델이 들어오면 끝나자마자 이어서 찍는다 */
+let queued: { models: readonly ModelListing[]; onProgress: (done: number, total: number) => void } | null = null;
 /** 이 창에서 이미 찍어 본 모델. 저장이 실패하거나 목록에 안 잡혀도 계속 다시 찍지 않게 */
 const attempted = new Set<string>();
 
@@ -45,20 +47,35 @@ export function needsThumbnail(model: ModelListing): boolean {
   return !model.thumbnail || !model.portrait || !model.look;
 }
 
+/** 목록에서 사라졌거나 썸네일이 이미 갖춰진 모델은 재시도 제한을 풀어 삭제 후·덮어쓰기 재임포트 시 다시 찍게 한다 */
+export function syncThumbnailAttempts(models: readonly ModelListing[]): void {
+  const stillMissing = new Set(models.filter(needsThumbnail).map((model) => model.id));
+  for (const id of [...attempted]) {
+    if (!stillMissing.has(id)) attempted.delete(id);
+  }
+}
+
 /**
  * 썸네일이 없는 모델들을 차례로 찍는다. 하나 시작할 때마다 onProgress(끝난 수, 전체).
- * 이미 돌고 있으면 그걸 기다린다.
+ * 이미 돌고 있으면 새 목록을 대기열에 올려 두고 끝난 뒤 이어서 찍는다.
  */
 export function makeMissingThumbnails(
   models: readonly ModelListing[],
   onProgress: (done: number, total: number) => void,
 ): Promise<void> {
-  if (running) return running;
+  syncThumbnailAttempts(models);
+  if (running) {
+    queued = { models, onProgress };
+    return running;
+  }
   const missing = models.filter((model) => needsThumbnail(model) && !attempted.has(model.id));
   if (missing.length === 0) return Promise.resolve();
   for (const model of missing) attempted.add(model.id);
   running = run(missing, onProgress).finally(() => {
     running = null;
+    const next = queued;
+    queued = null;
+    if (next) void makeMissingThumbnails(next.models, next.onProgress);
   });
   return running;
 }
@@ -105,9 +122,10 @@ async function run(models: readonly ModelListing[], onProgress: (done: number, t
     diag("thumbnails world-ready");
     for (const [index, entry] of models.entries()) {
       onProgress(index, models.length);
+      let loaded: Awaited<ReturnType<typeof loadCharacter>> | null = null;
       try {
         diag(`thumbnails loading ${entry.id}`);
-        const loaded = await loadCharacter(
+        loaded = await loadCharacter(
           world,
           scene,
           entry,
@@ -155,10 +173,11 @@ async function run(models: readonly ModelListing[], onProgress: (done: number, t
         await saveThumbnail(entry.id, "card", await pngBytes(card));
         await saveThumbnail(entry.id, "look", new TextEncoder().encode(JSON.stringify(look)).buffer as ArrayBuffer);
         await saveThumbnail(entry.id, "full", await pngBytes(full));
-        loaded.dispose();
         diag(`thumbnails saved ${entry.id} ${JSON.stringify(look)}`);
       } catch (error) {
         diag(`thumbnails failed ${entry.id}: ${error instanceof Error ? `${error.message} ${error.stack ?? ""}` : String(error)}`);
+      } finally {
+        loaded?.dispose();
       }
     }
     onProgress(models.length, models.length);

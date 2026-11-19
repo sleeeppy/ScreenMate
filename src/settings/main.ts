@@ -16,6 +16,7 @@ import {
   checkForUpdate,
   deleteModels,
   diag,
+  fetchReleaseNotes,
   getLibrary,
   installUpdate,
   getSettings,
@@ -57,7 +58,7 @@ import {
 } from "./library";
 import "../platformFont";
 import "./settings.css";
-import { makeMissingThumbnails, needsThumbnail } from "./thumbnails";
+import { makeMissingThumbnails, needsThumbnail, syncThumbnailAttempts } from "./thumbnails";
 import { openTour, type Tour } from "./tour";
 
 const SIZES = [
@@ -96,7 +97,7 @@ const ICONS = {
   move: '<path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2h7a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/><path d="m11 11.5 2.5 2-2.5 2M8 13.5h5.5"/>',
   out: '<path d="M14 5h5v5M19 5l-8 8"/><path d="M17 14v4a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h4"/>',
   play: '<path d="M8 6v12l10-6z"/>',
-  gear: '<circle cx="12" cy="12" r="3"/><path d="M12 3.5v2.2M12 18.3v2.2M20.5 12h-2.2M5.7 12H3.5M18 6l-1.6 1.6M7.6 16.4 6 18M18 18l-1.6-1.6M7.6 7.6 6 6"/>',
+  gear: '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>',
   power: '<path d="M12 4v8"/><path d="M7.5 6.8a7 7 0 1 0 9 0"/>',
 };
 
@@ -543,9 +544,18 @@ function modelGesture(event: PointerEvent, id: string): void {
     }
     drag?.move(moveEvent.clientX, moveEvent.clientY);
   };
-  const up = (upEvent: PointerEvent) => {
+  const cleanup = () => {
     window.removeEventListener("pointermove", move);
     window.removeEventListener("pointerup", up);
+    window.removeEventListener("pointercancel", cancel);
+    window.removeEventListener("blur", cancel);
+  };
+  const cancel = () => {
+    cleanup();
+    drag?.cancel();
+  };
+  const up = (upEvent: PointerEvent) => {
+    cleanup();
     if (drag) {
       drag.drop(upEvent.clientX, upEvent.clientY);
       return;
@@ -562,6 +572,8 @@ function modelGesture(event: PointerEvent, id: string): void {
   };
   window.addEventListener("pointermove", move);
   window.addEventListener("pointerup", up);
+  window.addEventListener("pointercancel", cancel);
+  window.addEventListener("blur", cancel);
 }
 
 /** 폴더 카드: 누르면 열고, 끌면 폴더째 옮긴다 */
@@ -574,19 +586,31 @@ function folderGesture(event: PointerEvent, id: string): void {
     }
     drag?.move(moveEvent.clientX, moveEvent.clientY);
   };
-  const up = (upEvent: PointerEvent) => {
+  const cleanup = () => {
     window.removeEventListener("pointermove", move);
     window.removeEventListener("pointerup", up);
+    window.removeEventListener("pointercancel", cancel);
+    window.removeEventListener("blur", cancel);
+  };
+  const cancel = () => {
+    cleanup();
+    drag?.cancel();
+  };
+  const up = (upEvent: PointerEvent) => {
+    cleanup();
     if (drag) drag.drop(upEvent.clientX, upEvent.clientY);
     else openFolder(id);
   };
   window.addEventListener("pointermove", move);
   window.addEventListener("pointerup", up);
+  window.addEventListener("pointercancel", cancel);
+  window.addEventListener("blur", cancel);
 }
 
 interface Drag {
   move(x: number, y: number): void;
   drop(x: number, y: number): void;
+  cancel(): void;
 }
 
 /** 끄는 것: 고른 모델들, 또는 폴더 */
@@ -662,6 +686,11 @@ function startDrag(payload: Payload): Drag {
       if (destination === "new") void newFolder(payload);
       else void moveItems(payload, destination || null);
     },
+    cancel() {
+      highlight(null);
+      ghost.remove();
+      document.body.classList.remove("dragging");
+    },
   };
 }
 
@@ -698,12 +727,16 @@ function marquee(event: PointerEvent, content: HTMLElement): void {
   const up = () => {
     window.removeEventListener("pointermove", move);
     window.removeEventListener("pointerup", up);
+    window.removeEventListener("pointercancel", up);
+    window.removeEventListener("blur", up);
     box?.remove();
     const last = [...state.selected].pop();
     if (last) inspect(last);
   };
   window.addEventListener("pointermove", move);
   window.addEventListener("pointerup", up);
+  window.addEventListener("pointercancel", up);
+  window.addEventListener("blur", up);
 }
 
 // ------------------------------------------------------------------ 오른쪽 클릭 메뉴
@@ -851,11 +884,12 @@ function paintUpdate(): void {
   const hint = row.querySelector<HTMLElement>("#update-hint")!;
   const button = row.querySelector<HTMLButtonElement>("[data-general='update']")!;
   const bar = row.querySelector<HTMLElement>(".update-bar")!;
+  const notesLink = row.querySelector<HTMLButtonElement>("[data-general='notes']");
   const status = updateState.status;
   const latest = status?.latest ? status.latest.replace(/^v/i, "v") : null;
   let tone: "busy" | "ok" | "new" | "error" | "muted" = "muted";
   let text = "";
-  let label = "다시 확인";
+  let label = "다시 시도";
   let primary = false;
   let disabled = false;
   switch (updateState.phase) {
@@ -914,6 +948,7 @@ function paintUpdate(): void {
   button.classList.toggle("primary", primary);
   bar.hidden = updateState.phase !== "downloading";
   bar.querySelector<HTMLElement>("span")!.style.width = `${Math.round(updateState.fraction * 100)}%`;
+  if (notesLink) notesLink.hidden = !(updateState.phase === "idle" && status?.available);
 }
 
 function updateError(error: unknown, fallback: string): string {
@@ -982,11 +1017,12 @@ function openGeneral(): void {
         <div class="panel-row update-row" id="update-row">
           <div class="update-icon"></div>
           <div class="text">
-            <div class="label">업데이트 <span class="update-current">지금 v${escape(state.version)}</span></div>
+            <div class="label">업데이트 <span class="update-current">v${escape(state.version)}</span></div>
             <div class="hint" id="update-hint"></div>
+            <button class="link-button update-notes-link" data-general="notes" hidden>패치노트 보기</button>
             <div class="update-bar" hidden><span></span></div>
           </div>
-          <button class="button" data-general="update">다시 확인</button>
+          <button class="button" data-general="update">다시 시도</button>
         </div>
         <div class="panel-row">
           <div class="text"><div class="label">데이터 폴더</div><div class="hint">설정·가져온 모델·썸네일이 들어 있어요</div></div>
@@ -998,7 +1034,7 @@ function openGeneral(): void {
         </div>
       </div>
       <div class="general-foot">
-        <span class="version">ScreenMate ${escape(state.version)}</span>
+        <span class="version">ScreenMate v${escape(state.version)} <button class="link-button version-notes" data-general="current-notes">패치노트</button></span>
         <button class="button" data-general="quit">${icon("power", 14)}종료</button>
       </div>
     </div>`;
@@ -1020,6 +1056,19 @@ function openGeneral(): void {
     else if (action === "tour") {
       close();
       showTour();
+    } else if (action === "notes") {
+      const status = updateState.status;
+      if (status?.latest) {
+        openReleaseNotes({
+          version: status.latest,
+          body: status.notes ?? "",
+          page: status.page ?? "https://github.com/sleeeppy/screenmate/releases",
+          mode: "available",
+          installable: status.installable,
+        });
+      }
+    } else if (action === "current-notes") {
+      void showCurrentReleaseNotes();
     } else if (action === "update") void runUpdate();
     else if (action === "quit") void quitApp();
   });
@@ -1027,6 +1076,158 @@ function openGeneral(): void {
   document.body.append(overlay);
   paintUpdate();
   bind(overlay);
+}
+
+// ------------------------------------------------------------------ 패치노트
+
+function isNewerVersion(remote: string, local: string): boolean {
+  const parse = (text: string) =>
+    text
+      .trim()
+      .replace(/^v/i, "")
+      .split("-")[0]
+      .split(".")
+      .map((part) => Number.parseInt(part, 10) || 0);
+  const a = parse(remote);
+  const b = parse(local);
+  const len = Math.max(a.length, b.length);
+  for (let i = 0; i < len; i++) {
+    const diff = (a[i] ?? 0) - (b[i] ?? 0);
+    if (diff !== 0) return diff > 0;
+  }
+  return false;
+}
+
+/** GitHub 릴리스 마크다운의 소제목·목록·굵게·코드를 안전한 HTML로 바꾼다 */
+function renderNotesHtml(raw: string): string {
+  const inline = (text: string) =>
+    escape(text)
+      .replace(/`([^`]+)`/g, "<code>$1</code>")
+      .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
+      .replace(/\[([^\]]+)\]\((https:\/\/github\.com\/sleeeppy\/screenmate[^)]*)\)/g, "$1");
+  const blocks: string[] = [];
+  let items: string[] = [];
+  const flushList = () => {
+    if (!items.length) return;
+    blocks.push(`<ul>${items.join("")}</ul>`);
+    items = [];
+  };
+  for (const line of raw.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      flushList();
+      continue;
+    }
+    const heading = trimmed.match(/^#{1,4}\s+(.+)$/);
+    if (heading) {
+      flushList();
+      blocks.push(`<h4>${inline(heading[1])}</h4>`);
+      continue;
+    }
+    const bullet = trimmed.match(/^[-*]\s+(.+)$/);
+    if (bullet) {
+      items.push(`<li>${inline(bullet[1])}</li>`);
+      continue;
+    }
+    flushList();
+    blocks.push(`<p>${inline(trimmed)}</p>`);
+  }
+  flushList();
+  return blocks.join("");
+}
+
+function openReleaseNotes(options: {
+  version: string;
+  body: string;
+  page: string;
+  mode: "updated" | "available" | "current";
+  installable?: boolean;
+}): void {
+  document.querySelector(".notes-backdrop")?.remove();
+  const versionTag = options.version.replace(/^v?/i, "v");
+  const badge =
+    options.mode === "updated" ? "업데이트 완료" : options.mode === "available" ? "새 버전" : "패치노트";
+  const subtitle =
+    options.mode === "updated"
+      ? `${versionTag} 버전으로 업데이트되었어요`
+      : options.mode === "available"
+        ? `새 버전 ${versionTag}의 바뀐 내용이에요`
+        : `${versionTag} 버전의 바뀐 내용이에요`;
+  const rendered = options.body.trim()
+    ? renderNotesHtml(options.body)
+    : `<p class="notes-empty">적혀 있는 패치노트가 없어요. 자세한 변경 내역은 GitHub 릴리스에서 확인할 수 있어요.</p>`;
+  const overlay = document.createElement("div");
+  overlay.className = "dialog-backdrop notes-backdrop";
+  overlay.innerHTML = `
+    <div class="dialog notes" role="dialog" aria-modal="true" aria-label="패치노트">
+      <div class="notes-head">
+        <div>
+          <span class="notes-badge ${options.mode}">${badge}</span>
+          <h3>ScreenMate ${escape(versionTag)}</h3>
+          <p class="notes-sub">${escape(subtitle)}</p>
+        </div>
+        <button class="icon-button small" data-notes="close" title="닫기 (esc)">${icon("close", 15)}</button>
+      </div>
+      <div class="notes-body">${rendered}</div>
+      <div class="notes-foot">
+        <button class="button" data-notes="page">${icon("out", 14)}GitHub에서 보기</button>
+        <div class="notes-actions">
+          ${
+            options.mode === "available"
+              ? `<button class="button" data-notes="close">닫기</button>
+                 <button class="button primary" data-notes="update">${options.installable ? "지금 업데이트" : "받으러 가기"}</button>`
+              : `<button class="button primary" data-notes="close">확인</button>`
+          }
+        </div>
+      </div>
+    </div>`;
+  const close = () => {
+    window.removeEventListener("keydown", onKeyDown, true);
+    overlay.classList.add("leaving");
+    window.setTimeout(() => overlay.remove(), 140);
+  };
+  const onKeyDown = (keyEvent: KeyboardEvent) => {
+    if (keyEvent.key !== "Escape") return;
+    keyEvent.preventDefault();
+    keyEvent.stopPropagation();
+    close();
+  };
+  overlay.addEventListener("click", (clickEvent) => {
+    const action = (clickEvent.target as Element).closest<HTMLElement>("[data-notes]")?.dataset.notes;
+    if (action === "close" || clickEvent.target === overlay) close();
+    else if (action === "page") void openUpdatePage(options.page).catch((error) => toast(String(error)));
+    else if (action === "update") {
+      close();
+      void runUpdate();
+    }
+  });
+  window.addEventListener("keydown", onKeyDown, true);
+  document.body.append(overlay);
+}
+
+async function showCurrentReleaseNotes(): Promise<void> {
+  try {
+    const notes = await fetchReleaseNotes(state.version || undefined);
+    openReleaseNotes({ version: notes.version, body: notes.body, page: notes.page, mode: "current" });
+  } catch (error) {
+    toast(updateError(error, "패치노트를 불러오지 못했어요"));
+  }
+}
+
+async function showUpdatedNotesIfNeeded(version: string): Promise<void> {
+  if (!version) return;
+  void change({ seenVersion: version });
+  try {
+    const notes = await fetchReleaseNotes(version);
+    openReleaseNotes({ version: notes.version, body: notes.body, page: notes.page, mode: "updated" });
+  } catch {
+    openReleaseNotes({
+      version,
+      body: "",
+      page: "https://github.com/sleeeppy/screenmate/releases",
+      mode: "updated",
+    });
+  }
 }
 
 // ------------------------------------------------------------------ 처음 켰을 때 안내
@@ -1219,6 +1420,8 @@ function focusRename(): void {
     }
   };
   input.addEventListener("keydown", (keyEvent) => {
+    // 한글·일본어 입력기 조합 중 Enter로 확정할 때는 이름 바꾸기를 끝내지 않는다
+    if (keyEvent.isComposing || keyEvent.keyCode === 229) return;
     if (keyEvent.key === "Enter") finish(true);
     else if (keyEvent.key === "Escape") finish(false);
     else return;
@@ -1367,8 +1570,13 @@ function onKey(event: KeyboardEvent): void {
   if ((event.key === "ArrowRight" || event.key === "ArrowLeft") && models.length) {
     event.preventDefault();
     const index = models.findIndex((model) => model.id === current);
-    const step = event.key === "ArrowRight" ? 1 : -1;
-    const next = models[(index + step + models.length) % models.length];
+    const nextIndex =
+      index < 0
+        ? event.key === "ArrowRight"
+          ? 0
+          : models.length - 1
+        : (index + (event.key === "ArrowRight" ? 1 : -1) + models.length) % models.length;
+    const next = models[nextIndex];
     selectOnly(next.id);
     root.querySelector(`[data-model="${CSS.escape(next.id)}"]`)?.scrollIntoView({ block: "nearest" });
   } else if (event.key === "Enter" && current && current !== state.settings?.modelId) {
@@ -1378,10 +1586,15 @@ function onKey(event: KeyboardEvent): void {
 }
 
 async function use(id: string): Promise<void> {
-  state.settings = await selectModel(id);
-  state.inspectId = id;
-  render();
-  toast("모델을 바꿨어요");
+  try {
+    state.settings = await selectModel(id);
+    state.inspectId = id;
+    render();
+    toast("모델을 바꿨어요");
+  } catch (error) {
+    toast("모델을 바꾸지 못했어요");
+    diag(`selectModel failed ${String(error)}`);
+  }
 }
 
 type ToggleKey = "gaze" | "variety" | "ledges" | "autostart";
@@ -1397,14 +1610,26 @@ let pendingChanges = 0;
  */
 async function change(patch: Partial<Omit<Settings, "modelId">>): Promise<void> {
   if (!state.settings) return;
+  const previous = state.settings;
   const seq = ++changeSeq;
-  state.settings = { ...state.settings, ...patch };
+  state.settings = { ...previous, ...patch };
   syncSettings();
   pendingChanges++;
-  const saved = await updateSettings(patch).finally(() => pendingChanges--);
-  if (seq !== changeSeq) return;
-  state.settings = saved;
-  syncSettings();
+  try {
+    const saved = await updateSettings(patch);
+    if (seq !== changeSeq) return;
+    state.settings = saved;
+    syncSettings();
+  } catch (error) {
+    if (seq === changeSeq) {
+      state.settings = previous;
+      syncSettings();
+    }
+    toast("설정을 저장하지 못했어요");
+    diag(`updateSettings failed ${String(error)}`);
+  } finally {
+    pendingChanges--;
+  }
 }
 
 /** 설정 패널의 토글·선택·슬라이더를 지금 설정에 맞춘다 (요소는 그대로 두고 상태만) */
@@ -1493,12 +1718,22 @@ function organizeLibrary(): void {
   const { library, changed } = organize(state.library, state.models);
   if (!changed) return;
   state.library = library;
-  void saveLibrary(library).catch((error) => diag(`library save failed ${String(error)}`));
+  const seq = ++librarySeq;
+  librarySaving++;
+  void saveLibrary(library)
+    .then((saved) => {
+      if (seq === librarySeq) state.library = saved;
+    })
+    .catch((error) => diag(`library save failed ${String(error)}`))
+    .finally(() => {
+      librarySaving--;
+    });
 }
 
 async function refreshModels(): Promise<void> {
   state.models = await listModels();
   state.thumbVersion = Date.now();
+  syncThumbnailAttempts(state.models);
   organizeLibrary();
   const ids = new Set(state.models.map((model) => model.id));
   state.selected = new Set([...state.selected].filter((id) => ids.has(id)));
@@ -1543,6 +1778,9 @@ async function start(): Promise<void> {
   bindOnce();
   render();
   if (!settings.onboarded) showTour();
+  else if (version && settings.seenVersion && isNewerVersion(version, settings.seenVersion)) {
+    void showUpdatedNotesIfNeeded(version);
+  }
   void onUpdateProgress((progress) => {
     if (updateState.phase !== "downloading" && updateState.phase !== "installing") return;
     updateState.phase = progress.phase === "install" ? "installing" : "downloading";
