@@ -105,6 +105,9 @@ pub fn import_folder<R: Runtime>(app: &AppHandle<R>, source: &Path) -> Result<Ve
         .ok_or("폴더 이름이 없습니다")?;
     let package = sanitize(&folder_name);
     let target = root.join(&package);
+    if paths_overlap(source, &target) {
+        return Err("이미 가져온 모델 폴더 안이나 같은 폴더는 다시 가져올 수 없습니다".into());
+    }
     if target.exists() {
         fs::remove_dir_all(&target).map_err(|error| error.to_string())?;
     }
@@ -141,7 +144,7 @@ pub fn import_folder<R: Runtime>(app: &AppHandle<R>, source: &Path) -> Result<Ve
             .map(|extension| extension.to_string_lossy().to_ascii_lowercase())
             .unwrap_or_default();
         imported.push(ModelEntry {
-            id: sanitize(&relative.trim_end_matches(&format!(".{format}")).replace('/', "--")),
+            id: model_id(&relative),
             name,
             group: directory_name,
             file: relative,
@@ -149,12 +152,65 @@ pub fn import_folder<R: Runtime>(app: &AppHandle<R>, source: &Path) -> Result<Ve
         });
     }
 
+    let data = data_root(app)?;
     let mut models = load_registry(app);
-    models.retain(|entry| !entry.file.starts_with(&format!("{package}/")));
+    let prefix = format!("{package}/");
+    // 같은 패키지를 덮어쓰기 재임포트하면 기존 캐시·썸네일을 지워 새 모델 파일이 반영되게 한다
+    for old in models.iter().filter(|entry| entry.file.starts_with(&prefix)) {
+        remove_generated_artifacts(&data, &old.id);
+    }
+    models.retain(|entry| !entry.file.starts_with(&prefix));
     models.extend(imported.iter().cloned());
     save_registry(app, &models)?;
     let _ = app.emit("models-changed", ());
     Ok(imported)
+}
+
+/// 상대 경로에서 대소문자 구분 없이 확장자를 떼고 모델 id를 만든다.
+fn model_id(relative: &str) -> String {
+    let without_ext = Path::new(relative).with_extension("");
+    sanitize(&without_ext.to_string_lossy().replace('\\', "/").replace('/', "--"))
+}
+
+/// 아직 없을 수도 있는 경로를 존재하는 가장 가까운 조상까지 정규화해 비교 가능하게 만든다.
+fn normalize_path(path: &Path) -> PathBuf {
+    if let Ok(real) = fs::canonicalize(path) {
+        return real;
+    }
+    let mut tail = Vec::new();
+    let mut current = path;
+    while let Some(name) = current.file_name() {
+        tail.push(name.to_os_string());
+        let Some(parent) = current.parent() else {
+            break;
+        };
+        if let Ok(real) = fs::canonicalize(parent) {
+            let mut result = real;
+            for part in tail.into_iter().rev() {
+                result.push(part);
+            }
+            return result;
+        }
+        current = parent;
+    }
+    path.to_path_buf()
+}
+
+/// 원본과 대상이 같은 폴더이거나 한쪽이 다른 쪽 안에 있으면 true (삭제·무한 복사 방지).
+fn paths_overlap(source: &Path, target: &Path) -> bool {
+    let source = normalize_path(source);
+    let target = normalize_path(target);
+    source == target || target.starts_with(&source) || source.starts_with(&target)
+}
+
+/// 모델에서 파생된 캐시·썸네일 파일을 지운다 (프로필 overrides는 재임포트 시 유지).
+fn remove_generated_artifacts(root: &Path, id: &str) {
+    let _ = fs::remove_file(root.join("cache").join(format!("{id}.bpmx")));
+    for kind in ["full", "card", "look"] {
+        if let Some(name) = thumbnail_file(id, kind) {
+            let _ = fs::remove_file(root.join(THUMBNAILS).join(name));
+        }
+    }
 }
 
 /// 폴더에 모델이 하나면 폴더 이름, 여러 개면 파일 이름을 쓴다.
@@ -364,14 +420,10 @@ pub fn delete_models(app: AppHandle, ids: Vec<String>) -> Result<usize, String> 
     save_registry(&app, &models)?;
 
     for entry in &removed {
-        let _ = fs::remove_file(root.join("cache").join(format!("{}.bpmx", entry.id)));
+        remove_generated_artifacts(&root, &entry.id);
         let _ = fs::remove_file(root.join("profiles").join(format!("{}.json", entry.id)));
-        for kind in ["full", "card", "look"] {
-            if let Some(name) = thumbnail_file(&entry.id, kind) {
-                let _ = fs::remove_file(root.join(THUMBNAILS).join(name));
-            }
-        }
-        // 가져온 사본 폴더 (models\<package>). 같은 폴더의 모델이 남아 있으면 두고, 경로가 이상하면 건드리지 않는다
+        // 가져온 사본 폴더 (models\<package>). 같은 폴더의 모델이 남아 있으면 두고, 경로가 이상하면 건드리지 않는다.
+        // Windows에서 탐색기 등이 폴더를 잡고 있어 삭제가 실패해도 레지스트리·라이브러리 정리는 끝까지 마친다.
         let Some(package) = entry.file.split('/').next().filter(|package| !package.is_empty()) else {
             continue;
         };
@@ -380,7 +432,9 @@ pub fn delete_models(app: AppHandle, ids: Vec<String>) -> Result<usize, String> 
         let safe = Path::new(package).components().count() == 1
             && matches!(Path::new(package).components().next(), Some(Component::Normal(_)));
         if !still_used && safe && directory.is_dir() {
-            fs::remove_dir_all(&directory).map_err(|error| format!("{} 지우기 실패: {error}", directory.display()))?;
+            if let Err(error) = fs::remove_dir_all(&directory) {
+                eprintln!("{} 지우기 실패: {error}", directory.display());
+            }
         }
     }
 
@@ -518,5 +572,24 @@ mod tests {
         assert_eq!(display_name("Sour式鏡音リンVer.2.01", "Black", 2), "Sour式鏡音リンVer.2.01 Black");
         assert_eq!(display_name("DIVA風水着セット", "鏡音リン_DIVA風水着", 4), "鏡音リン DIVA風水着");
         assert_eq!(display_name("Lat Kagamine Len v1.3", "Lat Kagamine Len v1.3", 1), "Lat Kagamine Len v1.3");
+    }
+
+    #[test]
+    fn strips_extension_case_insensitively_in_model_id() {
+        assert_eq!(model_id("Pkg/Miku.pmx"), "Pkg--Miku");
+        assert_eq!(model_id("Pkg/Miku.PMX"), "Pkg--Miku");
+        assert_eq!(model_id("Pkg/Sub/Rin.PMD"), "Pkg--Sub--Rin");
+    }
+
+    #[test]
+    fn detects_overlapping_import_paths() {
+        let base = std::env::temp_dir().join(format!("screenmate-overlap-{}", std::process::id()));
+        let pkg = base.join("models").join("Miku");
+        let _ = fs::create_dir_all(&pkg);
+        assert!(paths_overlap(&pkg, &pkg), "같은 폴더");
+        assert!(paths_overlap(&base.join("models"), &pkg), "상위 폴더 선택");
+        assert!(paths_overlap(&pkg.join("sub"), &pkg), "하위 폴더 선택");
+        assert!(!paths_overlap(&base.join("other"), &pkg), "다른 폴더");
+        let _ = fs::remove_dir_all(&base);
     }
 }
