@@ -757,3 +757,35 @@ test("화면 밖 목표에 닿고 발이 엇갈릴 때까지 기다리는 동안
   assert.ok(maxSeenAfterOut < arena.left, `나간 뒤 화면 안으로 돌아오지 않는다 (x 최대 ${maxSeenAfterOut.toFixed(0)})`);
   assert.ok(behavior.feet.x < arena.left - 200, `화면 밖에서 사라진다 x=${behavior.feet.x.toFixed(0)}`);
 });
+
+test("화면 밖(away) 상태에서는 클릭해도 반응으로 바뀌지 않는다", () => {
+  const { actor } = makeActor();
+  const behavior = new Behavior(actor, sequence(0.9), { variety: true });
+  behavior.place(500, arena);
+  (behavior as unknown as { goAway(side: string, seconds: number): void }).goAway("left", 5);
+  assert.equal(behavior.state, "away");
+  behavior.click({ x: behavior.feet.x, y: behavior.feet.y - 100 });
+  assert.equal(behavior.state, "away");
+});
+
+test("공중·드래그 중 모니터 전환(fit)으로 경계에서 안쪽으로 순간이동하지 않는다", () => {
+  const { actor } = makeActor();
+  const behavior = new Behavior(actor, sequence(0.9));
+  behavior.place(500, arena);
+  behavior.grab({ x: 500, y: 800 }, 0);
+  behavior.drag({ x: 5, y: 800 }, 16);
+  run(behavior, 0.2);
+  const beforeX = behavior.feet.x;
+  behavior.fit(arena);
+  assert.equal(behavior.feet.x, beforeX, "들고 있는 동안 fit이 안쪽으로 끌어당기지 않는다");
+});
+
+test("모니터 좌표 이동(translate)은 속도 벡터(ledgeEstimate)를 오염시키지 않는다", () => {
+  const { actor } = makeActor();
+  const behavior = new Behavior(actor, sequence(0.9));
+  behavior.place(500, arena);
+  behavior.translate(-1920, 40);
+  const estimate = (behavior as unknown as { ledgeEstimate: { x: number; y: number } }).ledgeEstimate;
+  assert.deepEqual(estimate, { x: 0, y: 0 });
+});
+

@@ -395,14 +395,14 @@ export class Behavior {
 
   /** 화면 크기가 바뀌었을 때: 땅에 있으면 새 바닥에 맞추고 화면 안으로 */
   fit(arena: Arena): void {
-    // 화면 밖에 나가 있거나 엿보는 중이면 그대로 (화면 안으로 당기면 갑자기 나타난다)
-    if (this.state === "away" || this.state === "peek" || this.goal?.offscreen || this.arrived) return;
+    // 공중·화면 밖·엿보는 중이면 그대로 (다른 모니터로 넘어가거나 숨은 상태에서 안쪽으로 순간이동하지 않게)
+    if (this.airborne || this.state === "away" || this.state === "peek" || this.goal?.offscreen || this.arrived) return;
     const margin = this.margin();
     this.feet.x = clamp(this.feet.x, arena.left + margin, arena.right - margin);
-    if (!this.airborne && this.ledgeId === null) this.feet.y = arena.ground;
+    if (this.ledgeId === null) this.feet.y = arena.ground;
   }
 
-  /** 다른 모니터로 옮겨 좌표 원점이 바뀌었을 때: 화면 좌표로 들고 있는 값을 모두 같은 만큼 옮긴다 */
+  /** 다른 모니터로 옮겨 좌표 원점이 바뀌었을 때: 화면 좌표로 들고 있는 위치 값을 모두 같은 만큼 옮긴다 */
   translate(dx: number, dy: number): void {
     const shift = (point: Point) => {
       point.x += dx;
@@ -413,7 +413,6 @@ export class Behavior {
     shift(this.held);
     shift(this.ledgeAnchor);
     shift(this.ledgeShown);
-    shift(this.ledgeEstimate);
     for (const sample of this.samples) shift(sample);
   }
 
@@ -632,7 +631,7 @@ export class Behavior {
       this.peekState.out *= 0.6;
       return;
     }
-    if (this.airborne || this.state === "land" || this.state === "rise") return;
+    if (this.airborne || this.state === "land" || this.state === "rise" || this.state === "away") return;
     this.quietTime = 0;
     // 머리 꼭대기(서 있으면 頭 높이 = heightPx, 앉으면 더 낮다)보다 살짝 아래부터 머리로 본다.
     const head = pointer.y < this.feet.y - this.headHeight * 0.9;
