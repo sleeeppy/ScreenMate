@@ -194,20 +194,26 @@ export class MotionDriver {
     for (const bone of this.bones.values()) bone.touched = false;
     this.morphWeights.clear();
 
-    this.mixClips(now, dt);
+    const finished = this.mixClips(now, dt);
     this.applyCalibration();
     this.applyLayers(now, dt);
     this.solveLegs();
     this.writeBones();
     this.writeMorphs(now);
     this.writeIk();
+    // 완료 콜백은 현재 프레임의 IK·본 쓰기가 끝난 뒤에 부른다 (콜백이 새 모션을 시작해도 이 프레임의 legIk와 섞이지 않게)
+    if (finished && this.onFinished) {
+      const callback = this.onFinished;
+      this.onFinished = null;
+      callback(finished);
+    }
   }
 
   /**
    * 레이어마다 자세를 따로 샘플링한 뒤 아래에서 위로 섞는다.
    * 위 레이어에 없는 본·모프는 기본 자세(회전 0, 이동 0, 가중치 0) 쪽으로 같이 페이드된다.
    */
-  private mixClips(now: number, dt: number): void {
+  private mixClips(now: number, dt: number): Motion | null {
     const top = this.playing[this.playing.length - 1];
     if (top && top.fade < 1) {
       top.fade = Math.min(1, top.fade + dt / Math.max(0.01, top.motion.fadeIn));
@@ -247,11 +253,7 @@ export class MotionDriver {
       }
     }
 
-    if (top && this.onFinished && motionFinished(top.motion, now - top.startedAt)) {
-      const callback = this.onFinished;
-      this.onFinished = null;
-      callback(top.motion);
-    }
+    return top && this.onFinished && motionFinished(top.motion, now - top.startedAt) ? top.motion : null;
   }
 
   private *touchedBones(): Iterable<BoundBone> {

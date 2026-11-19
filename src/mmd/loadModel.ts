@@ -153,28 +153,39 @@ export async function loadCharacter(
       );
     }
   }
-  const model = world.runtime.createMmdModel(mesh, {
-    materialProxyConstructor: MmdStandardMaterialProxy,
-    buildPhysics,
-  });
-  const smoother = new PhysicsSmoother(model.runtimeBones, anchors);
-  let lastSmoothed = 0;
-  const smoothing = scene.onBeforeRenderObservable.add(() => {
-    const now = performance.now();
-    const dt = lastSmoothed > 0 ? (now - lastSmoothed) / 1000 : 0;
-    lastSmoothed = now;
-    smoother.apply(dt);
-  });
+  let model: MmdModel | null = null;
+  let smoothing: ReturnType<Scene["onBeforeRenderObservable"]["add"]> = null;
   let driver: MotionDriver | null = null;
-  const slot = createProceduralSlot((runtimeModel) => {
-    driver = new MotionDriver(runtimeModel, calibration, morphs, inputs);
-    return driver;
-  });
-  model.setRuntimeAnimation(model.createRuntimeAnimation(slot));
-  if (!driver) {
+  let smoother: PhysicsSmoother;
+  try {
+    model = world.runtime.createMmdModel(mesh, {
+      materialProxyConstructor: MmdStandardMaterialProxy,
+      buildPhysics,
+    });
+    smoother = new PhysicsSmoother(model.runtimeBones, anchors);
+    let lastSmoothed = 0;
+    smoothing = scene.onBeforeRenderObservable.add(() => {
+      const now = performance.now();
+      const dt = lastSmoothed > 0 ? (now - lastSmoothed) / 1000 : 0;
+      lastSmoothed = now;
+      smoother.apply(dt);
+    });
+    const slot = createProceduralSlot((runtimeModel) => {
+      driver = new MotionDriver(runtimeModel, calibration, morphs, inputs);
+      return driver;
+    });
+    model.setRuntimeAnimation(model.createRuntimeAnimation(slot));
+    if (!driver) {
+      throw new Error(`${entry.name}: 모션 드라이버를 만들지 못했습니다`);
+    }
+  } catch (error) {
+    if (smoothing) scene.onBeforeRenderObservable.remove(smoothing);
+    if (model) world.runtime.destroyMmdModel(model);
     disposeContainer(container, scene);
-    throw new Error(`${entry.name}: 모션 드라이버를 만들지 못했습니다`);
+    throw error;
   }
+  const activeModel = model;
+  const activeSmoothing = smoothing;
 
   // 윤곽선 기본 두께(모델이 정한 edgeSize)를 기억해 두고 화면 크기에 맞춰 줄인다.
   const outlines = container.materials
@@ -186,7 +197,7 @@ export async function loadCharacter(
   return {
     entry,
     mesh,
-    model,
+    model: activeModel,
     calibration,
     morphs,
     computedCalibration,
@@ -195,7 +206,7 @@ export async function loadCharacter(
     loadMs: Math.round(performance.now() - started),
     motion: driver,
     resetPhysics: () => {
-      model.initializePhysics();
+      activeModel.initializePhysics();
       smoother.reset();
     },
     ready: whenReady(container.textures, container.meshes),
@@ -206,8 +217,8 @@ export async function loadCharacter(
       for (const { material, base } of outlines) material.outlineWidth = base * scale * edgeScale;
     },
     dispose: () => {
-      scene.onBeforeRenderObservable.remove(smoothing);
-      world.runtime.destroyMmdModel(model);
+      scene.onBeforeRenderObservable.remove(activeSmoothing);
+      world.runtime.destroyMmdModel(activeModel);
       disposeContainer(container, scene);
     },
   };
