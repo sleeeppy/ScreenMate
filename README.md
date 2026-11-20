@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/images/cover.png" width="880" alt="ScreenMate — 바탕화면 위에서 살아 움직이는 나의 MMD 캐릭터 친구들. 창 위에 걸터앉은 린과 그 옆에 선 렌, 미쿠">
+  <a href="https://youtu.be/_YC3cDTFadI"><img src="docs/images/cover.png" width="880" alt="ScreenMate — 바탕화면 위에서 살아 움직이는 나의 MMD 캐릭터 친구들. 창 위에 걸터앉은 린과 그 옆에 선 렌, 미쿠"></a>
 </p>
 
 <p align="center">
